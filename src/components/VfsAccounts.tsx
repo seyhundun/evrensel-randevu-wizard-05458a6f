@@ -220,7 +220,7 @@ export default function VfsAccounts() {
           <Button
             size="sm"
             variant={addMode === "register" ? "default" : "outline"}
-            onClick={() => setAddMode("register")}
+            onClick={() => { setAddMode("register"); if (!newPassword) setNewPassword(generateSecurePassword()); }}
             className="gap-1"
           >
             <UserPlus className="w-3.5 h-3.5" /> Yeni Kayıt
