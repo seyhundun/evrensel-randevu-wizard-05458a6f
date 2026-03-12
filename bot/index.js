@@ -159,6 +159,43 @@ async function humanMove(page) {
   await delay(100, 300);
 }
 
+async function humanType(page, target, text, options = {}) {
+  const {
+    clearFirst = false,
+    minDelay = 70,
+    maxDelay = 220,
+    pauseChance = 0.14,
+    pauseMin = 220,
+    pauseMax = 950,
+  } = options;
+
+  if (!text && text !== 0) return false;
+  const element = typeof target === "string" ? await page.$(target) : target;
+  if (!element) return false;
+
+  await element.click({ clickCount: 1 });
+  await delay(180, 450);
+
+  if (clearFirst) {
+    await page.keyboard.down("Control");
+    await page.keyboard.press("a");
+    await page.keyboard.up("Control");
+    await page.keyboard.press("Backspace");
+    await delay(120, 300);
+  }
+
+  for (const ch of String(text)) {
+    const keyDelay = Math.floor(Math.random() * (maxDelay - minDelay + 1)) + minDelay;
+    await page.keyboard.type(ch, { delay: keyDelay });
+    if (Math.random() < pauseChance) {
+      await delay(pauseMin, pauseMax);
+    }
+  }
+
+  await delay(180, 420);
+  return true;
+}
+
 const apiHeaders = {
   "Content-Type": "application/json",
   Authorization: `Bearer ${CONFIG.API_KEY}`,
@@ -860,6 +897,108 @@ async function waitForRegistrationOtp(accountId, otpType, timeoutMs = 180000) {
   return null;
 }
 
+function normalizePhoneNumber(rawPhone) {
+  const digits = String(rawPhone || "").replace(/\D/g, "");
+  let mobileNumber = digits;
+
+  if (mobileNumber.startsWith("90") && mobileNumber.length > 10) {
+    mobileNumber = mobileNumber.slice(2);
+  }
+  if (mobileNumber.startsWith("0")) {
+    mobileNumber = mobileNumber.slice(1);
+  }
+  if (mobileNumber.length > 10) {
+    mobileNumber = mobileNumber.slice(-10);
+  }
+
+  return { dialCode: "90", mobileNumber };
+}
+
+async function selectTurkeyDialCode(page) {
+  const nativeSelected = await page.evaluate(() => {
+    const selectEls = Array.from(document.querySelectorAll("select"));
+    for (const select of selectEls) {
+      const options = Array.from(select.options || []);
+      const match = options.find((opt) => {
+        const text = `${opt.textContent || ""} ${opt.value || ""}`.toLowerCase();
+        return /turkey|türkiye|turkiye|\(90\)|\+90|(^|\D)90(\D|$)/i.test(text);
+      });
+      if (!match) continue;
+
+      select.value = match.value;
+      select.dispatchEvent(new Event("input", { bubbles: true }));
+      select.dispatchEvent(new Event("change", { bubbles: true }));
+      return (match.textContent || match.value || "").trim();
+    }
+    return null;
+  });
+
+  if (nativeSelected) {
+    console.log(`  [REG] ✅ Dial code seçildi (native: ${nativeSelected})`);
+    await delay(300, 700);
+    return true;
+  }
+
+  const triggerClicked = await page.evaluate(() => {
+    const isVisible = (el) => {
+      if (!el) return false;
+      const rect = el.getBoundingClientRect();
+      const style = window.getComputedStyle(el);
+      return rect.width > 0 && rect.height > 0 && style.display !== "none" && style.visibility !== "hidden";
+    };
+
+    const labelCandidates = Array.from(document.querySelectorAll("label, span, div, p")).filter((el) => {
+      const text = (el.textContent || "").toLowerCase();
+      return text.includes("arama kodu") || text.includes("dial code") || text.includes("country code");
+    });
+
+    for (const label of labelCandidates) {
+      const scope = label.closest("mat-form-field, .mat-mdc-form-field, .form-group, .row, .col, .field, div, section") || label.parentElement;
+      if (!scope) continue;
+      const trigger = scope.querySelector('mat-select, [role="combobox"], .mat-mdc-select-trigger, .mat-select-trigger, .ng-select-container, [id*="dial" i], [name*="dial" i], [aria-label*="dial" i], [aria-label*="arama kodu" i]');
+      if (trigger && isVisible(trigger)) {
+        trigger.click();
+        return true;
+      }
+    }
+
+    return false;
+  });
+
+  if (triggerClicked) {
+    await delay(300, 900);
+
+    const customSelected = await page.evaluate(() => {
+      const isVisible = (el) => {
+        if (!el) return false;
+        const rect = el.getBoundingClientRect();
+        const style = window.getComputedStyle(el);
+        return rect.width > 0 && rect.height > 0 && style.display !== "none" && style.visibility !== "hidden";
+      };
+
+      const options = Array.from(document.querySelectorAll('[role="option"], mat-option, .mat-mdc-option, .mat-option, .ng-option, li[role="option"]'))
+        .filter((el) => isVisible(el));
+
+      const match = options.find((opt) => {
+        const text = (opt.textContent || "").toLowerCase();
+        return /turkey|türkiye|turkiye|\(90\)|\+90|(^|\D)90(\D|$)/i.test(text);
+      });
+
+      if (!match) return null;
+      match.click();
+      return (match.textContent || "").trim();
+    });
+
+    if (customSelected) {
+      console.log(`  [REG] ✅ Dial code seçildi (custom: ${customSelected})`);
+      await delay(300, 700);
+      return true;
+    }
+  }
+
+  return false;
+}
+
 async function registerVfsAccount(account) {
   const ts = new Date().toLocaleTimeString("tr-TR");
   console.log(`\n[${ts}] 📝 VFS Kayıt: ${account.email}`);
@@ -924,12 +1063,15 @@ async function registerVfsAccount(account) {
     // 1. Email field
     const emailInput = await page.$('input[type="email"], input[placeholder*="email"], input[name*="email"]');
     if (emailInput) {
-      await emailInput.click();
-      await delay(300, 600);
-      for (const ch of account.email) {
-        await page.keyboard.type(ch, { delay: Math.random() * 120 + 30 });
-      }
-      await delay(500, 1000);
+      await humanType(page, emailInput, account.email, {
+        clearFirst: true,
+        minDelay: 80,
+        maxDelay: 240,
+        pauseChance: 0.18,
+        pauseMin: 280,
+        pauseMax: 1200,
+      });
+      await delay(500, 1100);
     }
     await humanMove(page);
 
@@ -937,66 +1079,71 @@ async function registerVfsAccount(account) {
     const passwordInputs = await page.$$('input[type="password"]');
     console.log(`  [REG] ${passwordInputs.length} şifre alanı bulundu`);
     for (let i = 0; i < passwordInputs.length; i++) {
-      await passwordInputs[i].click();
-      await delay(300, 600);
-      for (const ch of account.password) {
-        await page.keyboard.type(ch, { delay: Math.random() * 120 + 30 });
-      }
-      await delay(500, 1000);
+      await humanType(page, passwordInputs[i], account.password, {
+        clearFirst: true,
+        minDelay: 85,
+        maxDelay: 230,
+        pauseChance: 0.15,
+        pauseMin: 240,
+        pauseMax: 900,
+      });
+      await delay(450, 1000);
       if (i === 0) await humanMove(page);
     }
-    await delay(500, 1000);
+    await delay(700, 1300);
 
     // 3. Mobile Number - Dial Code dropdown + Mobile Number field
     if (account.phone) {
-      // Parse phone: expect format like +905XXXXXXXXX or 5XXXXXXXXX
-      let dialCode = "90";
-      let mobileNumber = account.phone;
-      
-      // Remove + prefix
-      if (mobileNumber.startsWith("+")) mobileNumber = mobileNumber.substring(1);
-      // If starts with country code 90, split it
-      if (mobileNumber.startsWith("90") && mobileNumber.length > 10) {
-        dialCode = "90";
-        mobileNumber = mobileNumber.substring(2);
-      }
-      // Remove leading 0 if present (VFS says "without prefix(0)")
-      if (mobileNumber.startsWith("0")) mobileNumber = mobileNumber.substring(1);
-
+      const { dialCode, mobileNumber } = normalizePhoneNumber(account.phone);
       console.log(`  [REG] Telefon: +${dialCode} ${mobileNumber}`);
 
-      // Select dial code from dropdown
-      try {
-        const dialCodeSelect = await page.$('select');
-        if (dialCodeSelect) {
-          await dialCodeSelect.select(dialCode);
-          await delay(300, 600);
-        }
-      } catch (e) {
-        console.log("  [REG] Dial code dropdown bulunamadı, varsayılan kullanılacak");
+      const dialCodeSelected = await selectTurkeyDialCode(page);
+      if (!dialCodeSelected) {
+        throw new Error("Dial code Turkey(90) seçilemedi");
       }
 
-      // Fill mobile number (input after dial code, usually input[type="tel"] or text input near "mobile")
       const mobileInput = await page.evaluateHandle(() => {
-        // Look for the mobile number input (not the dial code)
-        const inputs = [...document.querySelectorAll('input[type="tel"], input[type="text"], input[type="number"]')];
-        return inputs.find(inp => {
-          const name = (inp.name || "").toLowerCase();
-          const id = (inp.id || "").toLowerCase();
-          const placeholder = (inp.placeholder || "").toLowerCase();
-          const label = inp.closest("div")?.textContent?.toLowerCase() || "";
-          return name.includes("mobile") || name.includes("phone") || name.includes("tel") ||
-                 id.includes("mobile") || id.includes("phone") ||
-                 placeholder.includes("mobile") || label.includes("mobile number");
-        }) || null;
+        const isVisible = (el) => {
+          if (!el) return false;
+          const rect = el.getBoundingClientRect();
+          const style = window.getComputedStyle(el);
+          return rect.width > 0 && rect.height > 0 && style.display !== "none" && style.visibility !== "hidden";
+        };
+
+        const scoreInput = (inp) => {
+          const meta = `${inp.name || ""} ${inp.id || ""} ${inp.placeholder || ""} ${inp.getAttribute("aria-label") || ""}`.toLowerCase();
+          const sectionText = (inp.closest("mat-form-field, .mat-mdc-form-field, .form-group, .row, div")?.textContent || "").toLowerCase();
+
+          if (/otp|code|verify|email|mail|password|şifre/.test(meta)) return -10;
+
+          let score = 0;
+          if (/mobile|phone|tel|gsm|cep|telefon/.test(meta)) score += 5;
+          if (/mobile number|phone number|telefon numarası|cep numarası|cep telefonu|ön ek olmadan/.test(sectionText)) score += 4;
+          if (inp.type === "tel") score += 3;
+          return score;
+        };
+
+        const candidates = Array.from(document.querySelectorAll('input[type="tel"], input[type="text"], input[type="number"]'))
+          .filter((inp) => isVisible(inp) && !inp.disabled && !inp.readOnly)
+          .map((inp) => ({ inp, score: scoreInput(inp) }))
+          .filter((item) => item.score > 0)
+          .sort((a, b) => b.score - a.score);
+
+        return candidates[0]?.inp || null;
       });
+
       if (mobileInput && mobileInput.asElement()) {
-        await mobileInput.asElement().click();
-        await delay(300, 600);
-        for (const ch of mobileNumber) {
-          await page.keyboard.type(ch, { delay: Math.random() * 120 + 30 });
-        }
-        await delay(500, 1000);
+        await humanType(page, mobileInput.asElement(), mobileNumber, {
+          clearFirst: true,
+          minDelay: 90,
+          maxDelay: 250,
+          pauseChance: 0.12,
+          pauseMin: 220,
+          pauseMax: 800,
+        });
+        await delay(500, 1100);
+      } else {
+        throw new Error("Telefon numarası alanı bulunamadı");
       }
     }
     await humanMove(page);
