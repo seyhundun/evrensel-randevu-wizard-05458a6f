@@ -1132,8 +1132,10 @@ async function registerVfsAccount(account) {
     await delay(700, 1300);
 
     // TELEFON
+    let normalizedPhone = "";
     if (account.phone) {
       const { mobileNumber } = normalizePhoneNumber(account.phone);
+      normalizedPhone = mobileNumber;
       console.log(`  [REG] Telefon: +90 ${mobileNumber}`);
 
       await selectTurkeyDialCode(page);
