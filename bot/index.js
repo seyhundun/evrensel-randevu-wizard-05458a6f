@@ -148,6 +148,44 @@ async function waitForLoginFormAfterQueue(page) {
 
 // ==================== OTP HANDLING ====================
 
+async function readManualOtp(accountId) {
+  try {
+    const res = await fetch(CONFIG.API_URL, {
+      method: "POST",
+      headers: apiHeaders,
+      body: JSON.stringify({ action: "get_account_otp", account_id: accountId }),
+    });
+    const data = await res.json();
+    if (data.manual_otp) {
+      console.log(`  [OTP] ✅ Manuel OTP bulundu: ${data.manual_otp}`);
+      // Kullanıldıktan sonra temizle
+      await fetch(CONFIG.API_URL, {
+        method: "POST",
+        headers: apiHeaders,
+        body: JSON.stringify({ action: "clear_account_otp", account_id: accountId }),
+      });
+      return data.manual_otp;
+    }
+    return null;
+  } catch (err) {
+    console.error("  [OTP] Manuel OTP okuma hatası:", err.message);
+    return null;
+  }
+}
+
+async function setOtpRequested(accountId) {
+  try {
+    await fetch(CONFIG.API_URL, {
+      method: "POST",
+      headers: apiHeaders,
+      body: JSON.stringify({ action: "set_otp_requested", account_id: accountId }),
+    });
+    console.log("  [OTP] 📱 SMS OTP bekleniyor - dashboard'dan girilebilir");
+  } catch (err) {
+    console.error("  [OTP] otp_requested_at ayarlama hatası:", err.message);
+  }
+}
+
 async function readOtpFromEmail(accountId) {
   try {
     console.log("  [OTP] Email'den OTP okunuyor...");
