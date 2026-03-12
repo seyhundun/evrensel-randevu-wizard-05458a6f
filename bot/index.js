@@ -831,79 +831,155 @@ async function selectTurkeyDialCode(page) {
 }
 
 async function tickAllCheckboxes(page) {
-  console.log("  [REG] Checkbox'lar tıklanıyor...");
+  console.log("  [REG] Onay checkbox'ları işaretleniyor...");
 
-  // Yöntem 1: Doğrudan input click
-  try {
-    const c1 = await page.evaluate(() => {
-      let n = 0;
-      for (const cb of Array.from(document.querySelectorAll('input[type="checkbox"]'))) { if (!cb.checked) { cb.click(); n++; } }
-      return n;
-    });
-    if (c1 > 0) console.log(`  [REG] ✅ ${c1} checkbox doğrudan tıklandı`);
-  } catch {}
-  await delay(300, 500);
+  const result = await page.evaluate(() => {
+    const isVisible = (el) => {
+      if (!el) return false;
+      const rect = el.getBoundingClientRect();
+      const style = window.getComputedStyle(el);
+      return rect.width > 0 && rect.height > 0 && style.display !== "none" && style.visibility !== "hidden";
+    };
 
-  // Yöntem 2: Label click
-  try {
-    const c2 = await page.evaluate(() => {
-      let n = 0;
-      for (const l of Array.from(document.querySelectorAll('label'))) {
-        const cb = l.querySelector('input[type="checkbox"]');
-        if (cb && !cb.checked) { l.click(); n++; }
+    const keywords = /(gizlilik|privacy|kvkk|koşul|terms|condition|consent|onay|veri transfer|data transfer|kabul|aydınlatma)/i;
+    const submitKeywords = ["devam", "continue", "register", "create", "kayıt", "oluştur", "sign up"];
+
+    const emailInput = Array.from(document.querySelectorAll('input[type="email"], input[name="email"], input[formcontrolname*="email"]')).find(isVisible);
+    const scope = emailInput?.closest("form") || emailInput?.closest("main") || document.body;
+
+    const clickTarget = (el) => {
+      if (!el) return;
+      try {
+        el.scrollIntoView({ block: "center", inline: "nearest" });
+      } catch {}
+      try { el.click(); } catch {}
+    };
+
+    let considered = 0;
+    let checked = 0;
+    let touched = 0;
+
+    const checkboxInputs = Array.from(scope.querySelectorAll('input[type="checkbox"]')).filter((cb) => isVisible(cb));
+
+    for (const cb of checkboxInputs) {
+      const host = cb.closest('label, mat-checkbox, .mat-checkbox, .mat-mdc-checkbox, .mdc-form-field, .form-check, .checkbox-container') || cb.parentElement;
+      const meta = `${cb.name || ""} ${cb.id || ""} ${cb.getAttribute("aria-label") || ""} ${host?.textContent || ""}`.toLowerCase();
+      const shouldCheck = cb.required || cb.getAttribute("aria-required") === "true" || keywords.test(meta);
+      if (!shouldCheck) continue;
+
+      considered++;
+
+      if (!cb.checked) {
+        clickTarget(host || cb);
+        if (!cb.checked) {
+          cb.checked = true;
+          cb.dispatchEvent(new Event("input", { bubbles: true }));
+          cb.dispatchEvent(new Event("change", { bubbles: true }));
+        }
+        touched++;
       }
-      return n;
-    });
-    if (c2 > 0) console.log(`  [REG] ✅ ${c2} checkbox label ile tıklandı`);
-  } catch {}
-  await delay(300, 500);
 
-  // Yöntem 3: mat-checkbox
-  try {
-    const c3 = await page.evaluate(() => {
-      let n = 0;
-      for (const mc of Array.from(document.querySelectorAll('mat-checkbox:not(.mat-checkbox-checked), .mat-checkbox:not(.mat-checkbox-checked)'))) { mc.click(); n++; }
-      return n;
-    });
-    if (c3 > 0) console.log(`  [REG] ✅ ${c3} mat-checkbox tıklandı`);
-  } catch {}
-  await delay(300, 500);
+      cb.dispatchEvent(new Event("input", { bubbles: true }));
+      cb.dispatchEvent(new Event("change", { bubbles: true }));
+      if (cb.checked) checked++;
+    }
 
-  // Yöntem 4: Puppeteer click
-  try {
-    const checkboxes = await page.$$('input[type="checkbox"]');
-    let c4 = 0;
-    for (const cb of checkboxes) {
-      const isChecked = await page.evaluate(el => el.checked, cb);
-      if (!isChecked) {
-        try {
-          const parent = await cb.evaluateHandle(el => el.closest('label') || el.parentElement);
-          if (parent && parent.asElement()) await parent.asElement().click();
-          else await cb.click();
-          c4++;
-        } catch {}
-        await delay(200, 400);
+    // Bazı Angular checkbox bileşenleri için host click
+    let matTouched = 0;
+    const matBoxes = Array.from(scope.querySelectorAll('mat-checkbox, .mat-checkbox, .mat-mdc-checkbox')).filter(isVisible);
+    for (const box of matBoxes) {
+      const text = (box.textContent || "").toLowerCase();
+      const hasKeyword = keywords.test(text);
+      if (!hasKeyword) continue;
+
+      const alreadyChecked =
+        box.classList.contains("mat-checkbox-checked") ||
+        box.classList.contains("mat-mdc-checkbox-checked") ||
+        box.getAttribute("aria-checked") === "true" ||
+        !!box.querySelector('input[type="checkbox"]:checked');
+
+      if (!alreadyChecked) {
+        clickTarget(box);
+        matTouched++;
       }
     }
-    if (c4 > 0) console.log(`  [REG] ✅ ${c4} checkbox Puppeteer ile tıklandı`);
-  } catch {}
 
-  // Yöntem 5: mat-checkbox-inner-container
-  try {
-    const c5 = await page.evaluate(() => {
-      let n = 0;
-      for (const el of Array.from(document.querySelectorAll('.mat-checkbox-inner-container, .mat-checkbox-frame, .checkbox-mark, .mat-checkbox-layout'))) { el.click(); n++; }
-      return n;
-    });
-    if (c5 > 0) console.log(`  [REG] ✅ ${c5} inner checkbox tıklandı`);
-  } catch {}
+    const form = emailInput?.closest("form");
+    if (form) {
+      form.dispatchEvent(new Event("input", { bubbles: true }));
+      form.dispatchEvent(new Event("change", { bubbles: true }));
+    }
 
-  const finalCount = await page.evaluate(() => {
-    const all = Array.from(document.querySelectorAll('input[type="checkbox"]'));
-    return { total: all.length, checked: all.filter(c => c.checked).length };
+    const submitBtn = Array.from(scope.querySelectorAll("button")).find((b) => {
+      const txt = (b.textContent || "").toLowerCase().trim();
+      return submitKeywords.some((k) => txt.includes(k));
+    }) || scope.querySelector('button[type="submit"]');
+
+    return {
+      considered,
+      checked,
+      touched,
+      matTouched,
+      submitDisabled: !!submitBtn?.disabled,
+      visibleCheckboxCount: checkboxInputs.length,
+    };
   });
-  console.log(`  [REG] Checkbox durumu: ${finalCount.checked}/${finalCount.total} işaretli`);
-  return finalCount.checked >= finalCount.total;
+
+  console.log(`  [REG] Checkbox sonucu: considered=${result.considered}, checked=${result.checked}, touched=${result.touched}, mat=${result.matTouched}, submitDisabled=${result.submitDisabled}`);
+  return !result.submitDisabled;
+}
+
+async function getRegistrationFormDiagnostics(page) {
+  return await page.evaluate(() => {
+    const isVisible = (el) => {
+      if (!el) return false;
+      const rect = el.getBoundingClientRect();
+      const style = window.getComputedStyle(el);
+      return rect.width > 0 && rect.height > 0 && style.display !== "none" && style.visibility !== "hidden";
+    };
+
+    const submitKeywords = ["devam", "continue", "register", "create", "kayıt", "oluştur", "sign up"];
+    const buttons = Array.from(document.querySelectorAll("button"));
+    const submitBtn = buttons.find((b) => {
+      const txt = (b.textContent || "").toLowerCase().trim();
+      return submitKeywords.some((k) => txt.includes(k));
+    }) || document.querySelector('button[type="submit"]');
+
+    const visibleInputs = Array.from(document.querySelectorAll("input, select, textarea")).filter(isVisible);
+    const invalidFields = visibleInputs
+      .filter((el) => {
+        const requiredEmpty =
+          (el.required || el.getAttribute("aria-required") === "true") &&
+          ((el.type === "checkbox" && !el.checked) || (el.type !== "checkbox" && String(el.value || "").trim() === ""));
+        const htmlInvalid = typeof el.checkValidity === "function" ? !el.checkValidity() : false;
+        const classInvalid = /ng-invalid|mat-mdc-form-field-invalid|mat-form-field-invalid/i.test(el.className || "");
+        const ariaInvalid = el.getAttribute("aria-invalid") === "true";
+        return requiredEmpty || htmlInvalid || classInvalid || ariaInvalid;
+      })
+      .slice(0, 8)
+      .map((el) => ({
+        type: el.type || el.tagName.toLowerCase(),
+        name: el.name || "",
+        id: el.id || "",
+        placeholder: (el.placeholder || "").slice(0, 40),
+        required: !!el.required || el.getAttribute("aria-required") === "true",
+        valueLength: String(el.value || "").length,
+        checked: typeof el.checked === "boolean" ? el.checked : undefined,
+        className: (el.className || "").slice(0, 80),
+      }));
+
+    const validationHints = Array.from(document.querySelectorAll("small, .error, .invalid-feedback, mat-error, .mat-error, .text-danger"))
+      .map((el) => (el.textContent || "").trim())
+      .filter((t) => t)
+      .slice(0, 5);
+
+    return {
+      submitDisabled: !!submitBtn?.disabled,
+      submitText: (submitBtn?.textContent || "").trim().slice(0, 30),
+      invalidFields,
+      validationHints,
+    };
+  });
 }
 
 async function postRegError(account, page, reason) {
@@ -1056,8 +1132,10 @@ async function registerVfsAccount(account) {
     await delay(700, 1300);
 
     // TELEFON
+    let normalizedPhone = "";
     if (account.phone) {
       const { mobileNumber } = normalizePhoneNumber(account.phone);
+      normalizedPhone = mobileNumber;
       console.log(`  [REG] Telefon: +90 ${mobileNumber}`);
 
       await selectTurkeyDialCode(page);
@@ -1241,22 +1319,82 @@ async function registerVfsAccount(account) {
           return keywords.some(k => txt.includes(k));
         }) || document.querySelector('button[type="submit"]') || null;
       });
+
       if (submitBtn && submitBtn.asElement()) {
-        const isDisabled = await page.evaluate(b => b.disabled, submitBtn.asElement());
+        let isDisabled = await page.evaluate((b) => b.disabled, submitBtn.asElement());
+
         if (isDisabled) {
-          console.log("  [REG] ⚠ Buton disabled! Checkbox tekrar deneniyor...");
-          await tickAllCheckboxes(page);
-          await delay(1000, 2000);
-          const stillDisabled = await page.evaluate(b => b.disabled, submitBtn.asElement());
-          if (stillDisabled) {
-            console.log("  [REG] ⚠ Buton hala disabled, force click...");
-            await page.evaluate(b => { b.disabled = false; b.click(); }, submitBtn.asElement());
-          } else {
-            await submitBtn.asElement().click();
+          console.log("  [REG] ⚠ Buton disabled, form validasyonu inceleniyor...");
+          const beforeDiag = await getRegistrationFormDiagnostics(page);
+          console.log("  [REG] Invalid alanlar (ilk):", JSON.stringify(beforeDiag.invalidFields));
+          if (beforeDiag.validationHints?.length) {
+            console.log("  [REG] Validasyon mesajları:", JSON.stringify(beforeDiag.validationHints));
           }
-        } else {
-          await submitBtn.asElement().click();
+
+          await tickAllCheckboxes(page);
+          await delay(900, 1800);
+
+          if (normalizedPhone) {
+            const phoneRefilled = await page.evaluate((phone) => {
+              const isVisible = (el) => {
+                if (!el) return false;
+                const rect = el.getBoundingClientRect();
+                const style = window.getComputedStyle(el);
+                return rect.width > 0 && rect.height > 0 && style.display !== "none" && style.visibility !== "hidden";
+              };
+
+              const candidates = Array.from(document.querySelectorAll('input[type="tel"], input[type="text"], input[type="number"]'))
+                .filter((el) => isVisible(el) && !el.disabled && !el.readOnly)
+                .filter((el) => {
+                  const meta = `${el.name || ""} ${el.id || ""} ${el.placeholder || ""} ${el.getAttribute("formcontrolname") || ""}`.toLowerCase();
+                  return /mobile|phone|tel|gsm|cep|telefon|ön ek olmadan|without prefix/.test(meta);
+                });
+
+              const target = candidates.find((el) => {
+                const empty = String(el.value || "").replace(/\D/g, "").length < 9;
+                const invalid = el.getAttribute("aria-invalid") === "true" || /ng-invalid/i.test(el.className || "");
+                return empty || invalid;
+              }) || candidates[0] || null;
+
+              if (!target) return false;
+
+              const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")?.set;
+              if (setter) setter.call(target, phone);
+              else target.value = phone;
+              target.dispatchEvent(new Event("input", { bubbles: true }));
+              target.dispatchEvent(new Event("change", { bubbles: true }));
+              target.dispatchEvent(new Event("blur", { bubbles: true }));
+              return true;
+            }, normalizedPhone);
+
+            if (phoneRefilled) {
+              console.log(`  [REG] ✅ Telefon tekrar set edildi: ${normalizedPhone}`);
+              await delay(400, 900);
+            }
+          }
+
+          await page.evaluate(() => {
+            const form = document.querySelector("form");
+            if (form) {
+              form.dispatchEvent(new Event("input", { bubbles: true }));
+              form.dispatchEvent(new Event("change", { bubbles: true }));
+            }
+          });
+
+          await delay(700, 1400);
+          isDisabled = await page.evaluate((b) => b.disabled, submitBtn.asElement());
+
+          if (isDisabled) {
+            const afterDiag = await getRegistrationFormDiagnostics(page);
+            console.log("  [REG] Invalid alanlar (son):", JSON.stringify(afterDiag.invalidFields));
+            if (afterDiag.validationHints?.length) {
+              console.log("  [REG] Validasyon mesajları (son):", JSON.stringify(afterDiag.validationHints));
+            }
+            throw new Error("Devam Et butonu pasif kaldı (form invalid)");
+          }
         }
+
+        await submitBtn.asElement().click();
         clickedSubmit = true;
         console.log("  [REG] ✅ Devam Et tıklandı");
       }
@@ -1265,11 +1403,20 @@ async function registerVfsAccount(account) {
     if (!clickedSubmit) {
       clickedSubmit = await page.evaluate(() => {
         const btns = Array.from(document.querySelectorAll("button"));
-        const kws = ["devam", "continue", "register", "create", "submit"];
-        for (const b of btns) {
-          if (b.disabled) continue;
-          const txt = (b.textContent || "").toLowerCase();
-          if (b.type === "submit" || kws.some(k => txt.includes(k))) { b.click(); return true; }
+        const targetKeywords = ["devam", "continue", "register", "create", "kayıt", "sign up", "oluştur"];
+        const skipKeywords = ["cookie", "tanımlama", "allow all", "accept", "reject", "clear", "apply", "cancel", "filter"];
+
+        const target = btns.find((b) => {
+          const txt = (b.textContent || "").toLowerCase().trim();
+          if (!txt) return false;
+          if (b.disabled) return false;
+          if (skipKeywords.some((k) => txt.includes(k))) return false;
+          return targetKeywords.some((k) => txt.includes(k));
+        });
+
+        if (target) {
+          target.click();
+          return true;
         }
         return false;
       });
