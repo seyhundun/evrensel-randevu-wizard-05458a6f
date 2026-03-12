@@ -157,13 +157,15 @@ export function useTracking() {
   };
 
   const startPolling = (cfgId: string) => {
-    // Poll tracking_logs for "found" status
+    const pollingStartTime = new Date().toISOString();
+    // Poll tracking_logs for "found" status — only logs after polling started
     pollRef.current = setInterval(async () => {
       const { data } = await supabase
         .from("tracking_logs")
         .select("*")
         .eq("config_id", cfgId)
         .eq("status", "found")
+        .gte("created_at", pollingStartTime)
         .limit(1);
 
       if (data && data.length > 0) {
@@ -176,7 +178,7 @@ export function useTracking() {
         .select("*", { count: "exact", head: true })
         .eq("config_id", cfgId);
       setChecksCount(count ?? 0);
-    }, 10000); // Poll every 10 seconds
+    }, 10000);
   };
 
   const startTracking = useCallback(async () => {
