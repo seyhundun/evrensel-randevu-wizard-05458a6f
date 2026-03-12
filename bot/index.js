@@ -1319,22 +1319,82 @@ async function registerVfsAccount(account) {
           return keywords.some(k => txt.includes(k));
         }) || document.querySelector('button[type="submit"]') || null;
       });
+
       if (submitBtn && submitBtn.asElement()) {
-        const isDisabled = await page.evaluate(b => b.disabled, submitBtn.asElement());
+        let isDisabled = await page.evaluate((b) => b.disabled, submitBtn.asElement());
+
         if (isDisabled) {
-          console.log("  [REG] ⚠ Buton disabled! Checkbox tekrar deneniyor...");
-          await tickAllCheckboxes(page);
-          await delay(1000, 2000);
-          const stillDisabled = await page.evaluate(b => b.disabled, submitBtn.asElement());
-          if (stillDisabled) {
-            console.log("  [REG] ⚠ Buton hala disabled, force click...");
-            await page.evaluate(b => { b.disabled = false; b.click(); }, submitBtn.asElement());
-          } else {
-            await submitBtn.asElement().click();
+          console.log("  [REG] ⚠ Buton disabled, form validasyonu inceleniyor...");
+          const beforeDiag = await getRegistrationFormDiagnostics(page);
+          console.log("  [REG] Invalid alanlar (ilk):", JSON.stringify(beforeDiag.invalidFields));
+          if (beforeDiag.validationHints?.length) {
+            console.log("  [REG] Validasyon mesajları:", JSON.stringify(beforeDiag.validationHints));
           }
-        } else {
-          await submitBtn.asElement().click();
+
+          await tickAllCheckboxes(page);
+          await delay(900, 1800);
+
+          if (normalizedPhone) {
+            const phoneRefilled = await page.evaluate((phone) => {
+              const isVisible = (el) => {
+                if (!el) return false;
+                const rect = el.getBoundingClientRect();
+                const style = window.getComputedStyle(el);
+                return rect.width > 0 && rect.height > 0 && style.display !== "none" && style.visibility !== "hidden";
+              };
+
+              const candidates = Array.from(document.querySelectorAll('input[type="tel"], input[type="text"], input[type="number"]'))
+                .filter((el) => isVisible(el) && !el.disabled && !el.readOnly)
+                .filter((el) => {
+                  const meta = `${el.name || ""} ${el.id || ""} ${el.placeholder || ""} ${el.getAttribute("formcontrolname") || ""}`.toLowerCase();
+                  return /mobile|phone|tel|gsm|cep|telefon|ön ek olmadan|without prefix/.test(meta);
+                });
+
+              const target = candidates.find((el) => {
+                const empty = String(el.value || "").replace(/\D/g, "").length < 9;
+                const invalid = el.getAttribute("aria-invalid") === "true" || /ng-invalid/i.test(el.className || "");
+                return empty || invalid;
+              }) || candidates[0] || null;
+
+              if (!target) return false;
+
+              const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")?.set;
+              if (setter) setter.call(target, phone);
+              else target.value = phone;
+              target.dispatchEvent(new Event("input", { bubbles: true }));
+              target.dispatchEvent(new Event("change", { bubbles: true }));
+              target.dispatchEvent(new Event("blur", { bubbles: true }));
+              return true;
+            }, normalizedPhone);
+
+            if (phoneRefilled) {
+              console.log(`  [REG] ✅ Telefon tekrar set edildi: ${normalizedPhone}`);
+              await delay(400, 900);
+            }
+          }
+
+          await page.evaluate(() => {
+            const form = document.querySelector("form");
+            if (form) {
+              form.dispatchEvent(new Event("input", { bubbles: true }));
+              form.dispatchEvent(new Event("change", { bubbles: true }));
+            }
+          });
+
+          await delay(700, 1400);
+          isDisabled = await page.evaluate((b) => b.disabled, submitBtn.asElement());
+
+          if (isDisabled) {
+            const afterDiag = await getRegistrationFormDiagnostics(page);
+            console.log("  [REG] Invalid alanlar (son):", JSON.stringify(afterDiag.invalidFields));
+            if (afterDiag.validationHints?.length) {
+              console.log("  [REG] Validasyon mesajları (son):", JSON.stringify(afterDiag.validationHints));
+            }
+            throw new Error("Devam Et butonu pasif kaldı (form invalid)");
+          }
         }
+
+        await submitBtn.asElement().click();
         clickedSubmit = true;
         console.log("  [REG] ✅ Devam Et tıklandı");
       }
