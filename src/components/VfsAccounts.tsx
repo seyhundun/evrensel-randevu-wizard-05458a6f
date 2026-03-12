@@ -277,8 +277,20 @@ export default function VfsAccounts() {
               type={newPassword && addMode === "register" ? "text" : "password"}
               placeholder="••••••••"
               value={newPassword}
-              onChange={(e) => setNewPassword(e.target.value)}
+              onChange={(e) => {
+                const val = e.target.value.replace(/[^A-Za-z\d$@#!%*?]/g, "").slice(0, 15);
+                setNewPassword(val);
+              }}
+              maxLength={15}
             />
+            {newPassword && (() => {
+              const err = validateVfsPassword(newPassword);
+              return err ? (
+                <p className="text-[10px] text-destructive mt-0.5">{err}</p>
+              ) : (
+                <p className="text-[10px] text-green-600 mt-0.5">✓ Şifre uygun</p>
+              );
+            })()}
           </div>
           {addMode === "register" && (
             <div>
