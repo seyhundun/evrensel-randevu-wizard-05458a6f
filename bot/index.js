@@ -31,6 +31,8 @@ const CONFIG = {
   CAPTCHA_API_KEY: process.env.CAPTCHA_API_KEY || "",
   HEADLESS: true,
   SLOW_MO: 50,
+  QUEUE_MAX_WAIT_MS: Number(process.env.QUEUE_MAX_WAIT_MS || 300000), // 5dk
+  QUEUE_POLL_MS: Number(process.env.QUEUE_POLL_MS || 8000),
 };
 
 // ==================== HELPERS ====================
