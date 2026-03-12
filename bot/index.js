@@ -1354,14 +1354,19 @@ async function registerVfsAccount(account) {
     const preSubmitSS = await takeScreenshotBase64(page);
     if (preSubmitSS) {
       try {
-        const cfgRes = await fetch(CONFIG.API_URL, { method: "GET", headers: apiHeaders });
-        const cfgData = await cfgRes.json();
+        const cfgData = await apiGet("pre_submit:get_configs");
         const configId = cfgData?.configs?.[0]?.id;
         if (configId) {
-          await fetch(CONFIG.API_URL, { method: "POST", headers: apiHeaders,
-            body: JSON.stringify({ config_id: configId, status: "checking",
+          await apiPost(
+            {
+              config_id: configId,
+              status: "checking",
               message: `[REG] Form dolduruldu, Devam Et tıklanacak | ${account.email}`,
-              slots_available: 0, screenshot_base64: preSubmitSS }) });
+              slots_available: 0,
+              screenshot_base64: preSubmitSS,
+            },
+            "pre_submit:insert_log"
+          );
         }
       } catch {}
     }
