@@ -545,11 +545,11 @@ async function registerVfsAccount(account) {
 
     const dialOk = await selectTurkeyDialCode(page);
     if (!dialOk) {
-      // Screenshot al ve detaylı hata ver
-      const ss = await takeScreenshotBase64(page);
-      const pageHtml = await page.evaluate(() => document.body?.innerHTML?.substring(0, 2000) || '');
-      console.log('  [REG] Page HTML (ilk 500):', pageHtml.substring(0, 500));
-      throw new Error("Dial code Turkey(90) seçilemedi - detaylar loglarda");
+      console.log("  [REG] ⚠ Dial code +90 otomatik seçilemedi, mevcut seçimle devam ediliyor");
+      try {
+        const pageHtml = await page.evaluate(() => document.body?.innerHTML?.substring(0, 1500) || '');
+        console.log('  [REG] Dial code debug (ilk 250):', pageHtml.substring(0, 250));
+      } catch {}
     }
 
     await delay(500, 1000);
