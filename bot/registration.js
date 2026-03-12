@@ -462,12 +462,60 @@ async function registerVfsAccount(account) {
     await dismissCookieModal(page);
     console.log("  [REG] ✅ Cookie banner kapatıldı");
 
-    console.log("  [REG 3/7] Sayfa yüklenmesi bekleniyor...");
-    // Daha uzun timeout ve daha fazla selector
-    await page.waitForSelector('input[type="email"], input[name="email"], input[formcontrolname*="email"], input[id*="email"]', { timeout: 45000 });
+    console.log("  [REG 3/7] Form bekleniyor...");
+    const formStartedAt = Date.now();
+    let formReady = false;
 
-    // Formun tamamen yüklenmesi için ekstra bekleme
-    await delay(3000, 5000);
+    while (Date.now() - formStartedAt < QUEUE_MAX_WAIT_MS) {
+      const state = await page.evaluate(() => {
+        const isVisible = (el) => {
+          if (!el) return false;
+          const rect = el.getBoundingClientRect();
+          const style = window.getComputedStyle(el);
+          return rect.width > 0 && rect.height > 0 && style.display !== "none" && style.visibility !== "hidden";
+        };
+
+        const emails = Array.from(document.querySelectorAll('input[type="email"], input[name="email"], input[formcontrolname*="email"], input[id*="email"]'));
+        const passwords = Array.from(document.querySelectorAll('input[type="password"]'));
+        const title = (document.title || "").toLowerCase();
+        const body = (document.body?.innerText || "").toLowerCase();
+
+        return {
+          hasVisibleEmail: emails.some(isVisible),
+          visiblePasswords: passwords.filter(isVisible).length,
+          waitingRoom: title.includes("waiting room") || body.includes("şu anda sıradasınız") || body.includes("tahmini bekleme süreniz"),
+        };
+      });
+
+      if (state.hasVisibleEmail && state.visiblePasswords >= 2) {
+        formReady = true;
+        break;
+      }
+
+      if (state.waitingRoom) {
+        const waited = Math.round((Date.now() - formStartedAt) / 1000);
+        console.log(`  [REG] Sırada bekleniyor... ${waited}s`);
+      }
+
+      try {
+        await page.evaluate(() => {
+          const btns = Array.from(document.querySelectorAll("button"));
+          const acceptBtn = btns.find((b) => {
+            const txt = (b.textContent || "").toLowerCase();
+            return txt.includes("accept all") || txt.includes("kabul") || txt.includes("tümünü kabul") || txt.includes("tüm tanımlama");
+          }) || document.getElementById("onetrust-accept-btn-handler");
+          if (acceptBtn) acceptBtn.click();
+        });
+      } catch {}
+
+      await delay(3500, 7000);
+    }
+
+    if (!formReady) {
+      throw new Error(`Kayıt formu yüklenmedi (timeout: ${Math.round(QUEUE_MAX_WAIT_MS / 1000)}s)`);
+    }
+
+    await delay(1500, 2800);
 
     console.log("  [REG 4/7] Form dolduruluyor...");
 
