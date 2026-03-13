@@ -1253,10 +1253,12 @@ async function checkAppointments(config, account) {
 
     if (hasAppointment && !noAppointment) {
       console.log("  ✅ RANDEVU BULUNDU!");
+      await logStep(id, "found", `🎉 RANDEVU BULUNDU! | ${account.email}`);
       await reportResult(id, "found", `Randevu müsait! Hesap: ${account.email}`, 1, ss);
       return { found: true, accountBanned: false };
     } else {
       console.log("  ❌ Randevu yok.");
+      await logStep(id, "no_slots", `Müsait randevu yok | ${account.email}`);
       const msg = noAppointment ? "Müsait randevu yok." : "Dashboard yüklendi, randevu yok.";
       await reportResult(id, "checking", `${msg} | Hesap: ${account.email}`, 0, ss);
       return { found: false, accountBanned: false };
