@@ -292,18 +292,14 @@ export default function IdataAccounts() {
           <div className="grid grid-cols-3 gap-3">
             <div>
               <Label className="text-xs">İkametgah Şehri</Label>
-              {availableCities.length > 0 ? (
-                <select
+              <select
                   className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
                   value={form.residence_city}
                   onChange={e => updateForm("residence_city", e.target.value)}
                 >
                   <option value="">Şehir Seçiniz</option>
-                  {availableCities.map(c => <option key={c} value={c}>{c}</option>)}
+                  {TURKEY_CITIES.map(c => <option key={c} value={c}>{c}</option>)}
                 </select>
-              ) : (
-                <Input placeholder="İstanbul" value={form.residence_city} onChange={e => updateForm("residence_city", e.target.value)} />
-              )}
             </div>
             <div>
               <Label className="text-xs">iDATA Ofisi</Label>
