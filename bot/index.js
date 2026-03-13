@@ -2702,7 +2702,7 @@ async function registerVfsAccount(account) {
       console.log("  [REG] Sayfa durumu:", pageText.substring(0, 200));
       await logStep(regLogConfigId, "reg_fail", `OTP ekranı bulunamadı | ${account.email}`);
       await postRegError(account, page, "OTP ekranı bulunamadı (submit sonrası)");
-      await completeRegistration(account.id, false);
+      // completeRegistration çağırma — retry loop tekrar deneyecek
       return false;
     }
 
@@ -2716,7 +2716,7 @@ async function registerVfsAccount(account) {
     const otp = await waitForRegistrationOtp(account.id, otpType, 180000);
     if (!otp) {
       await postRegError(account, page, `${otpType} OTP timeout (180s)`);
-      await completeRegistration(account.id, false);
+      // completeRegistration çağırma — retry loop tekrar deneyecek
       return false;
     }
 
@@ -2783,7 +2783,7 @@ async function registerVfsAccount(account) {
         await delay(4000, 7000);
       } else {
         await postRegError(account, page, `${secondOtpType} OTP timeout`);
-        await completeRegistration(account.id, false);
+        // completeRegistration çağırma — retry loop tekrar deneyecek
         return false;
       }
     }
@@ -2805,11 +2805,12 @@ async function registerVfsAccount(account) {
       await postRegError(account, page, "OTP sonrası başarı sinyali bulunamadı");
     }
     await completeRegistration(account.id, success);
+    if (!success) return false; // retry loop tekrar deneyecek
     return success;
   } catch (err) {
     console.error("  [REG] Genel hata:", err.message);
     await postRegError(account, page, err.message);
-    await completeRegistration(account.id, false);
+    // completeRegistration çağırma — retry loop tekrar deneyecek
     return false;
   } finally {
     if (browser) try { await browser.close(); } catch {}
@@ -2837,12 +2838,52 @@ async function main() {
 
   while (true) {
     try {
-      // Bekleyen kayıtları kontrol et
+      // Bekleyen kayıtları kontrol et — başarısız olanları IP değiştirerek tekrar dene
       const pendingRegs = await fetchPendingRegistrations();
       if (pendingRegs.length > 0) {
         console.log(`\n📝 ${pendingRegs.length} bekleyen kayıt var`);
+        
+        // Log için aktif config ID al
+        let mainRegLogConfigId = null;
+        try {
+          const { configs: cfgs } = await fetchActiveConfigs();
+          if (cfgs.length > 0) mainRegLogConfigId = cfgs[0].id;
+        } catch {}
+        
         for (const reg of pendingRegs) {
-          await registerVfsAccount(reg);
+          let regSuccess = false;
+          let regAttempt = 0;
+          const MAX_REG_ATTEMPTS = 10;
+          
+          while (!regSuccess && regAttempt < MAX_REG_ATTEMPTS) {
+            regAttempt++;
+            console.log(`\n  [REG] 🔄 Kayıt denemesi ${regAttempt}/${MAX_REG_ATTEMPTS} — ${reg.email}`);
+            
+            // İlk denemeden sonra IP değiştir
+            if (regAttempt > 1) {
+              const newIp = getNextIp();
+              if (newIp) {
+                console.log(`  [REG] 🌐 IP değiştirildi: ${newIp}`);
+                await logStep(mainRegLogConfigId, "ip_change", `Kayıt retry IP değişimi: ${newIp} | Deneme ${regAttempt} | ${reg.email}`);
+              }
+              await delay(5000, 10000);
+            }
+            
+            regSuccess = await registerVfsAccount(reg);
+            
+            if (!regSuccess) {
+              console.log(`  [REG] ❌ Deneme ${regAttempt} başarısız, IP değiştirip tekrar deneniyor...`);
+              await logStep(mainRegLogConfigId, "reg_fail", `Deneme ${regAttempt}/${MAX_REG_ATTEMPTS} başarısız — tekrar denenecek | ${reg.email}`);
+              await delay(10000, 20000);
+            }
+          }
+          
+          if (!regSuccess) {
+            console.log(`  [REG] ⛔ ${reg.email} — ${MAX_REG_ATTEMPTS} denemede başarısız`);
+            await logStep(mainRegLogConfigId, "reg_fail", `${MAX_REG_ATTEMPTS} denemede başarısız, kayıt durduruluyor | ${reg.email}`);
+            await completeRegistration(reg.id, false);
+          }
+          
           await delay(10000, 20000);
         }
       }
