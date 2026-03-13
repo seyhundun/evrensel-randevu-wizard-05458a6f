@@ -1325,8 +1325,14 @@ async function checkAppointments(config, account) {
       else if (pageCheck.isNotFound) errorType = "❌ Sayfa bulunamadı (404)";
       else if (pageCheck.isSessionExpired) errorType = "❌ Oturum süresi dolmuş";
       else if (pageCheck.isWaitingRoom) errorType = "❌ Hala waiting room'da";
+      else if (pageCheck.hasTurnstileWidget && !pageCheck.hasCaptchaToken && pageCheck.hasCaptchaError) errorType = "❌ Turnstile doğrulanmadı (captcha token yok)";
       else if (pageCheck.hasTurnstileWidget && pageCheck.loginSubmitDisabled) errorType = "❌ Turnstile doğrulanmadı (submit pasif)";
       else if (isLoginFailed) errorType = "❌ Giriş başarısız";
+
+      if (errorType.includes("Turnstile")) {
+        markIpFail(activeIp);
+      }
+
       console.log(`  [5/6] ${errorType} | Hesap: ${account.email}`);
       const ss = await takeScreenshotBase64(page);
       await reportResult(id, "error", `${errorType} | Hesap: ${account.email}`, 0, ss);
