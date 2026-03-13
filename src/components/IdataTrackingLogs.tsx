@@ -143,7 +143,12 @@ export default function IdataTrackingLogs() {
       .select("*")
       .order("created_at", { ascending: false })
       .limit(100);
-    setLogs((data as unknown as LogEntry[] | null) ?? []);
+    const logList = (data as unknown as LogEntry[] | null) ?? [];
+    setLogs(logList);
+    // İlk yüklemede en son log appt_found ise alarm aç
+    if (logList.length > 0 && logList[0].status === "appt_found") {
+      setAppointmentFound(true);
+    }
     setLoading(false);
   };
 
