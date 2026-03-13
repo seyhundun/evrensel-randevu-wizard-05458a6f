@@ -423,6 +423,9 @@ export default function IdataAccounts() {
                   </div>
                 </div>
                 <div className="flex gap-1.5 shrink-0">
+                  <Button size="sm" variant="outline" onClick={() => loadToForm(acc)} className="gap-1">
+                    <Pencil className="w-3.5 h-3.5" /> Düzenle
+                  </Button>
                   {acc.status !== "active" && (
                     <Button size="sm" variant="outline" onClick={() => reactivateAccount(acc.id)} className="gap-1">
                       <UserCheck className="w-3.5 h-3.5" /> Aktif Et
