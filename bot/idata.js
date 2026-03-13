@@ -57,6 +57,37 @@ function delay(min = 2000, max = 5000) {
   return new Promise(r => setTimeout(r, Math.floor(Math.random() * (max - min) + min)));
 }
 
+// ==================== AUDIO ALARM ====================
+const { exec } = require("child_process");
+let alarmInterval = null;
+
+function startAlarm() {
+  if (alarmInterval) return; // zaten çalıyor
+  console.log("\n🔔🔔🔔 ALARM: RANDEVU BULUNDU! 🔔🔔🔔");
+  
+  const playBeep = () => {
+    // Linux'ta beep sesi çal (birden fazla yöntem dene)
+    exec('echo -e "\\a"'); // Terminal bell
+    exec('for i in 1 2 3; do echo -e "\\a"; sleep 0.3; done'); // Üçlü bip
+    // aplay/paplay varsa wav çal
+    exec('command -v paplay && paplay /usr/share/sounds/freedesktop/stereo/alarm-clock-elapsed.oga 2>/dev/null || command -v aplay && aplay /usr/share/sounds/alsa/Front_Center.wav 2>/dev/null || echo -e "\\a\\a\\a"');
+    // Terminale büyük uyarı yaz
+    console.log("\n" + "=".repeat(60));
+    console.log("🚨🚨🚨  RANDEVU BULUNDU! HEMEN GİRİN!  🚨🚨🚨");
+    console.log("=".repeat(60) + "\n");
+  };
+  
+  playBeep(); // İlk çalma
+  alarmInterval = setInterval(playBeep, 10000); // Her 10sn tekrarla
+}
+
+function stopAlarm() {
+  if (alarmInterval) {
+    clearInterval(alarmInterval);
+    alarmInterval = null;
+  }
+}
+
 const USER_AGENTS = [
   "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36",
   "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36",
