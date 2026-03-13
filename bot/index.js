@@ -1671,6 +1671,108 @@ async function tryForceRegistrationSubmit(page) {
   });
 }
 
+async function waitForOtpScreenAfterSubmit(page, timeoutMs = 45000) {
+  const startedAt = Date.now();
+  let retriedCaptchaOnce = false;
+
+  while (Date.now() - startedAt < timeoutMs) {
+    const state = await page.evaluate(() => {
+      const text = (document.body?.innerText || "").toLowerCase();
+      const title = (document.title || "").toLowerCase();
+
+      const hasOtpText = /otp|verification code|doğrulama kodu|one time|sms code|email code|kodu girin|code sent/.test(text);
+      const hasOtpInput = !!document.querySelector(
+        'input[autocomplete="one-time-code"], input[name*="otp" i], input[id*="otp" i], input[maxlength="1"], input[maxlength="6"]'
+      );
+
+      const hasRegisterForm =
+        !!document.querySelector('input[type="email"], input[name*="email" i]') &&
+        !!document.querySelector('input[type="password"]');
+
+      const submitBtn =
+        [...document.querySelectorAll("button")].find((b) => {
+          const txt = (b.textContent || "").toLowerCase().trim();
+          return ["devam et", "devam", "continue", "register", "create", "kayıt", "oluştur", "sign up"].some((k) => txt.includes(k));
+        }) || document.querySelector('button[type="submit"]');
+
+      const hasTurnstileWidget = !!document.querySelector(
+        'iframe[src*="challenges.cloudflare.com"], .cf-turnstile, [name*="turnstile"]'
+      );
+
+      const hasTokenField = Array.from(
+        document.querySelectorAll(
+          'input[name="cf-turnstile-response"], textarea[name="cf-turnstile-response"], input[name*="turnstile"], textarea[name*="turnstile"], textarea[name="g-recaptcha-response"], input[name="g-recaptcha-response"]'
+        )
+      ).some((el) => String(el.value || "").trim().length > 20);
+
+      let hasTokenApi = false;
+      try {
+        if (window.turnstile && typeof window.turnstile.getResponse === "function") {
+          const response = window.turnstile.getResponse();
+          hasTokenApi = typeof response === "string" && response.trim().length > 20;
+        }
+      } catch {}
+
+      const isWaitingRoom =
+        title.includes("waiting room") ||
+        text.includes("şu anda sıradasınız") ||
+        text.includes("this page will auto refresh") ||
+        text.includes("tahmini bekleme süreniz");
+
+      return {
+        hasOtpText,
+        hasOtpInput,
+        hasRegisterForm,
+        submitDisabled: !!submitBtn?.disabled,
+        hasTurnstileWidget,
+        hasCaptchaToken: hasTokenField || hasTokenApi,
+        isWaitingRoom,
+      };
+    });
+
+    if (state.hasOtpText || state.hasOtpInput) {
+      return { ok: true };
+    }
+
+    if (state.isWaitingRoom) {
+      console.log("  [REG] ⏳ Submit sonrası waiting room algılandı, bekleniyor...");
+      await solveTurnstile(page);
+      await delay(2200, 3800);
+      continue;
+    }
+
+    if (
+      !retriedCaptchaOnce &&
+      state.hasRegisterForm &&
+      state.submitDisabled &&
+      state.hasTurnstileWidget &&
+      !state.hasCaptchaToken
+    ) {
+      retriedCaptchaOnce = true;
+      console.log("  [REG] ⚠ Submit sonrası CAPTCHA token yok, yeniden çözüm deneniyor...");
+      const solved = await solveTurnstile(page);
+      await delay(1000, 1800);
+      const token = await waitForTurnstileToken(page, 8000);
+
+      if (solved && token) {
+        const force = await tryForceRegistrationSubmit(page);
+        console.log(`  [REG] Submit retry: clicked=${force.clicked}, forced=${force.forced}, reason=${force.reason}`);
+      }
+
+      await delay(1800, 3200);
+      continue;
+    }
+
+    await delay(900, 1600);
+  }
+
+  const pageTextPreview = await page
+    .evaluate(() => (document.body?.innerText || "").substring(0, 300))
+    .catch(() => "");
+
+  return { ok: false, pageTextPreview };
+}
+
 async function postRegError(account, page, reason) {
   try {
     let screenshotBase64 = null;
