@@ -97,6 +97,35 @@ export default function IdataTrackingLogs() {
   const [lightboxUrl, setLightboxUrl] = useState<string | null>(null);
   const [filter, setFilter] = useState<string>("all");
   const [configActive, setConfigActive] = useState(false);
+  const [appointmentFound, setAppointmentFound] = useState(false);
+  const [alarmDismissed, setAlarmDismissed] = useState(false);
+
+  // Dashboard sesli alarm
+  useEffect(() => {
+    if (!appointmentFound || alarmDismissed) return;
+    
+    // Web Audio API ile bip sesi oluştur
+    const playAlarm = () => {
+      try {
+        const ctx = new (window.AudioContext || (window as any).webkitAudioContext)();
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        osc.frequency.value = 880;
+        osc.type = "square";
+        gain.gain.value = 0.3;
+        osc.start();
+        setTimeout(() => { osc.frequency.value = 1100; }, 200);
+        setTimeout(() => { osc.frequency.value = 880; }, 400);
+        setTimeout(() => { osc.stop(); ctx.close(); }, 600);
+      } catch {}
+    };
+
+    playAlarm();
+    const interval = setInterval(playAlarm, 5000);
+    return () => clearInterval(interval);
+  }, [appointmentFound, alarmDismissed]);
 
   const fetchConfig = async () => {
     const { data } = await supabase
