@@ -1000,6 +1000,7 @@ async function checkAppointments(config, account) {
   const ts = new Date().toLocaleTimeString("tr-TR");
   const activeIp = getCurrentIp();
   console.log(`\n[${ts}] Kontrol: ${country} ${city} | Hesap: ${account.email} | IP: ${activeIp || "doğrudan"}`);
+  await logStep(id, "bot_start", `Kontrol başlıyor | Hesap: ${account.email} | IP: ${activeIp || "doğrudan"}`);
 
   let browser;
   try {
@@ -1011,6 +1012,7 @@ async function checkAppointments(config, account) {
 
     // STEP 1: Giriş sayfası
     console.log("  [1/6] Giriş sayfası...");
+    await logStep(id, "login_navigate", "VFS giriş sayfası açılıyor...");
     await page.goto(CONFIG.VFS_URL, { waitUntil: "domcontentloaded", timeout: 90000 });
     await humanIdle(4000, 8000); // Sayfa yüklendikten sonra okuyormuş gibi bekle
     await humanMove(page);
