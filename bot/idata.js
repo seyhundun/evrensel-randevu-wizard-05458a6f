@@ -1365,13 +1365,14 @@ async function mainLoop() {
       }
 
       // 2. Aktif hesaplarla randevu kontrol — HER SEFERİNDE FARKLI IP
-      // Cloudflare'da takılırsa farklı IP ile 3 kez dene
+      // Cloudflare'da takılırsa farklı IP ile 3 kez dene, 3'ünde de CF çıkarsa dashboard'a bildir
       const idataData = await fetch(CONFIG.API_URL + "/idata", { method: "GET", headers: apiHeaders }).then(r => r.json()).catch(() => null);
       const accounts = idataData?.accounts || [];
       
       if (accounts.length > 0) {
         const account = accounts[0];
         let success = false;
+        let allCfBlocked = true;
         
         for (let attempt = 1; attempt <= 3 && !success; attempt++) {
           const ip = getNextIp();
@@ -1383,6 +1384,8 @@ async function mainLoop() {
             
             const loginResult = await loginToIdata(page, account);
             if (loginResult.success) {
+              allCfBlocked = false;
+              await clearCfBlocked(); // CF engeli kalktı
               await idataLog("login_success", `Giriş başarılı: ${account.email}`);
               
               // Randevu kontrol
@@ -1390,11 +1393,12 @@ async function mainLoop() {
               const apptResult = await checkAppointments(page, account);
               
               if (apptResult.reason === "cloudflare") {
-                // Appointment sayfasında CF takıldı — IP değiştir
                 console.log(`  [CF] Randevu sayfasında Cloudflare! IP değiştiriliyor...`);
                 await idataLog("cloudflare", `Randevu sayfasında CF engeli | IP: ${ip} | Deneme: ${attempt}`, apptResult.screenshot);
                 if (ip) markIpBanned(ip);
-                continue; // Sonraki IP ile tekrar dene
+                allCfBlocked = true;
+                try { await browser.close(); } catch {}
+                continue;
               }
               
               if (apptResult.found) {
@@ -1426,10 +1430,10 @@ async function mainLoop() {
               await idataLog("login_fail", `Giriş başarısız: ${account.email}${reason}`, loginResult.screenshot);
               if (ip && ["cloudflare_queue", "cloudflare_challenge"].includes(loginResult.reason)) {
                 markIpBanned(ip);
-                // Cloudflare engeli — sonraki IP ile dene
-                continue;
+                continue; // CF engeli — sonraki IP
               }
-              success = true; // CF dışı hata, tekrar deneme
+              allCfBlocked = false;
+              success = true; // CF dışı hata
             }
           } catch (err) {
             await idataLog("error", `Hata: ${err.message} | IP: ${ip || "doğrudan"} | Deneme: ${attempt}`);
@@ -1438,11 +1442,34 @@ async function mainLoop() {
             try { if (browser) await browser.close(); } catch {}
           }
         }
-        } catch (err) {
-          await idataLog("error", `Hata: ${err.message} | IP: ${ip || "doğrudan"}`);
-          if (ip) markIpBanned(ip);
-        } finally {
-          try { if (browser) await browser.close(); } catch {}
+
+        // 3 denemede de CF engeli — dashboard'a bildir ve bekle
+        if (allCfBlocked && !success) {
+          const lastIp = IP_LIST[currentIpIndex] || "unknown";
+          await signalCfBlocked(lastIp);
+          await idataLog("cloudflare", `🚫 Tüm IP'ler Cloudflare tarafından engellendi! Dashboard'dan retry bekleniyor...`);
+          console.log("\n  🚫 [CF] Tüm IP'ler engelli! Dashboard'dan retry bekleniyor...");
+          
+          // Dashboard'dan "Yeni IP ile Dene" butonuna basılana kadar bekle
+          while (true) {
+            const retryRequested = await checkCfRetryRequested();
+            if (retryRequested) {
+              console.log("  ✅ [CF] Dashboard'dan retry isteği alındı! Devam ediliyor...");
+              await idataLog("cf_retry", "Dashboard'dan retry isteği alındı, yeni IP ile tekrar deneniyor");
+              // Tüm IP ban'larını sıfırla
+              ipBannedUntil.clear();
+              break;
+            }
+            // Bot aktif mi kontrol et
+            const active = await isIdataActive();
+            if (!active) {
+              console.log("  ⏸ Bot pasif duruma alındı");
+              await clearCfBlocked();
+              break;
+            }
+            await delay(5000, 8000);
+          }
+          continue; // Ana döngüyü baştan başlat (bekleme süresini atla)
         }
       } else {
         await idataLog("info", "Aktif hesap yok, bekleniyor");
