@@ -2336,6 +2336,13 @@ async function main() {
         accountLastUsed.set(account.id, Date.now());
         const result = await checkAppointments(config, account);
 
+        // IP engellendiyse hemen sonraki IP'ye geç ve kısa beklemeyle tekrar dene
+        if (result.ipBlocked) {
+          console.log(`\n🔄 IP engellendi, 10s sonra yeni IP ile tekrar deneniyor...`);
+          await new Promise((r) => setTimeout(r, 10000));
+          continue; // aynı config'i yeni IP ile tekrar dene
+        }
+
         if (result.found) { console.log("\n🎉 RANDEVU BULUNDU!"); consecutiveErrors = 0; }
         else if (result.accountBanned) { console.log(`\n⛔ Hesap banlı: ${account.email}`); consecutiveErrors++; }
         else { if (!result.otpRequired) consecutiveErrors = 0; else consecutiveErrors++; }
