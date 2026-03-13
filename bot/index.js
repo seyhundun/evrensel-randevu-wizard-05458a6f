@@ -1137,9 +1137,11 @@ async function checkAppointments(config, account) {
   const ts = new Date().toLocaleTimeString("tr-TR");
   // Her kontrolde sıradaki IP'yi kullan (round-robin)
   const activeIp = IP_LIST.length > 0 ? getNextIp() : null;
-  console.log(`\n[${ts}] Kontrol: ${country} ${city} | Hesap: ${account.email} | IP: ${activeIp || "doğrudan"}`);
-  await logStep(id, "bot_start", `Kontrol başlıyor | Hesap: ${account.email} | IP: ${activeIp || "doğrudan"}`);
-  await logStep(id, "ip_change", `Aktif IP: ${activeIp || "doğrudan"} | Hesap: ${account.email}`);
+  const countryLabels = { france: "Fransa", netherlands: "Hollanda", denmark: "Danimarka" };
+  const countryLabel = countryLabels[country] || country;
+  console.log(`\n[${ts}] Kontrol: ${countryLabel} ${city} | Hesap: ${account.email} | IP: ${activeIp || "doğrudan"}`);
+  await logStep(id, "bot_start", `Kontrol başlıyor | ${account.email} | Ülke: ${countryLabel} | IP: ${activeIp || "doğrudan"}`);
+  await logStep(id, "ip_change", `Aktif IP: ${activeIp || "doğrudan"} | Hesap: ${account.email} | Ülke: ${countryLabel}`);
 
   let browser;
   try {
@@ -2114,13 +2116,23 @@ async function registerVfsAccount(account) {
   const ts = new Date().toLocaleTimeString("tr-TR");
   console.log(`\n[${ts}] 📝 VFS Kayıt: ${account.email}`);
   
-  // Dashboard'da göstermek için aktif config ID'yi al
+  // Dashboard'da göstermek için aktif config ID'yi ve ülkeyi al
   let regLogConfigId = null;
+  let regCountry = "france";
+  let regCountryLabel = "Fransa";
   try {
     const { configs } = await fetchActiveConfigs();
-    if (configs.length > 0) regLogConfigId = configs[0].id;
+    if (configs.length > 0) {
+      regLogConfigId = configs[0].id;
+      if (configs[0].country) regCountry = configs[0].country;
+    }
   } catch {}
-  await logStep(regLogConfigId, "reg_start", `Kayıt başlıyor | ${account.email}`);
+
+  // Ülke label eşlemesi
+  const countryLabels = { france: "Fransa", netherlands: "Hollanda", denmark: "Danimarka" };
+  regCountryLabel = countryLabels[regCountry] || regCountry;
+
+  await logStep(regLogConfigId, "reg_start", `Kayıt başlıyor | ${account.email} | Ülke: ${regCountryLabel}`);
 
   let browser;
   let page;
@@ -2132,14 +2144,8 @@ async function registerVfsAccount(account) {
     await applyFingerprint(page, fp);
     await humanMove(page);
 
-    // Aktif config'den ülkeyi al ve ona göre kayıt URL'sini belirle
-    let regCountry = "france";
-    try {
-      const { configs } = await fetchActiveConfigs();
-      if (configs.length > 0 && configs[0].country) regCountry = configs[0].country;
-    } catch {}
     const regUrl = getVfsRegisterUrl(regCountry);
-    console.log(`  [REG 1/7] Kayıt sayfası: ${regUrl}`);
+    console.log(`  [REG 1/7] Kayıt sayfası: ${regUrl} (${regCountryLabel})`);
     await page.goto(regUrl, { waitUntil: "domcontentloaded", timeout: 90000 });
     await humanIdle(5000, 10000); // Sayfayı okuyormuş gibi bekle
     await humanMove(page);
@@ -2426,10 +2432,33 @@ async function registerVfsAccount(account) {
     await tickAllCheckboxes(page);
     await humanIdle(2000, 4000);
 
-    // CAPTCHA
+    // CAPTCHA — birden fazla deneme
     console.log("  [REG] CAPTCHA kontrol...");
+    await logStep(regLogConfigId, "reg_captcha", `CAPTCHA çözülüyor | ${account.email} | Ülke: ${regCountryLabel}`);
     await humanMove(page);
-    await solveTurnstile(page);
+
+    let regCaptchaToken = "";
+    for (let captchaAttempt = 1; captchaAttempt <= 3; captchaAttempt++) {
+      console.log(`  [REG] CAPTCHA deneme ${captchaAttempt}/3`);
+      await solveTurnstile(page);
+      await delay(2000, 4000);
+      regCaptchaToken = await waitForTurnstileToken(page, 8000);
+      if (regCaptchaToken) {
+        console.log("  [REG] ✅ CAPTCHA token alındı");
+        break;
+      }
+      // Token yoksa checkbox click dene
+      await tryClickTurnstileCheckbox(page);
+      await delay(1500, 3000);
+      regCaptchaToken = await waitForTurnstileToken(page, 6000);
+      if (regCaptchaToken) {
+        console.log("  [REG] ✅ CAPTCHA token (checkbox) alındı");
+        break;
+      }
+    }
+    if (!regCaptchaToken) {
+      console.log("  [REG] ⚠ CAPTCHA token alınamadı, devam ediliyor...");
+    }
     await humanIdle(3000, 6000);
 
     // Screenshot gönder (submit öncesi)
@@ -2443,7 +2472,7 @@ async function registerVfsAccount(account) {
             {
               config_id: configId,
               status: "checking",
-              message: `[REG] Form dolduruldu, Devam Et tıklanacak | ${account.email}`,
+              message: `[REG] Form dolduruldu, Devam Et tıklanacak | ${account.email} | Ülke: ${regCountryLabel}`,
               slots_available: 0,
               screenshot_base64: preSubmitSS,
             },
@@ -2602,7 +2631,7 @@ async function registerVfsAccount(account) {
               await delay(1200, 2200);
               const tokenAfterRetry = await waitForTurnstileToken(page, 8000);
               if (!solvedAgain || !tokenAfterRetry) {
-                throw new Error("Devam Et butonu pasif: CAPTCHA doğrulaması tamamlanmadı");
+                throw new Error(`Devam Et butonu pasif: CAPTCHA doğrulaması tamamlanmadı | Ülke: ${regCountryLabel}`);
               }
             }
 
@@ -2610,7 +2639,7 @@ async function registerVfsAccount(account) {
             console.log(`  [REG] Force submit: clicked=${forceResult.clicked}, forced=${forceResult.forced}, reason=${forceResult.reason}`);
 
             if (!forceResult.clicked) {
-              throw new Error("Devam Et butonu pasif kaldı (form invalid)");
+              throw new Error(`Devam Et butonu pasif kaldı (form invalid) | Ülke: ${regCountryLabel}`);
             }
 
             clickedSubmit = true;
