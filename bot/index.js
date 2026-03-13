@@ -194,25 +194,39 @@ async function humanMove(page) {
 }
 
 async function humanType(page, target, text, options = {}) {
-  const { clearFirst = false, minDelay = 70, maxDelay = 220, pauseChance = 0.14, pauseMin = 220, pauseMax = 950 } = options;
+  const { clearFirst = false, minDelay = 120, maxDelay = 350, pauseChance = 0.2, pauseMin = 400, pauseMax = 1500 } = options;
   if (!text && text !== 0) return false;
   const element = typeof target === "string" ? await page.$(target) : target;
   if (!element) return false;
+  
+  // Alana tıklamadan önce biraz bekle (düşünme süresi)
+  await humanIdle(800, 2000);
   await element.click({ clickCount: 1 });
-  await delay(180, 450);
+  await delay(400, 900);
+  
   if (clearFirst) {
     await page.keyboard.down("Control");
     await page.keyboard.press("a");
     await page.keyboard.up("Control");
     await page.keyboard.press("Backspace");
-    await delay(120, 300);
+    await delay(300, 700);
   }
+  
   for (const ch of String(text)) {
     const keyDelay = Math.floor(Math.random() * (maxDelay - minDelay + 1)) + minDelay;
     await page.keyboard.type(ch, { delay: keyDelay });
+    // Daha sık ve uzun duraklamalar
     if (Math.random() < pauseChance) await delay(pauseMin, pauseMax);
+    // Bazen yanlış tuş bas ve düzelt (typo simülasyonu)
+    if (Math.random() < 0.03 && text.length > 5) {
+      const wrongKey = String.fromCharCode(97 + Math.floor(Math.random() * 26));
+      await page.keyboard.type(wrongKey, { delay: keyDelay });
+      await delay(300, 800);
+      await page.keyboard.press("Backspace");
+      await delay(200, 500);
+    }
   }
-  await delay(180, 420);
+  await delay(400, 1000);
   return true;
 }
 
