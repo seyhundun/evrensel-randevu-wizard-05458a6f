@@ -2760,13 +2760,33 @@ async function main() {
         // IP engellendiyse hemen sonraki IP'ye geç ve kısa beklemeyle tekrar dene
         if (result.ipBlocked) {
           console.log(`\n🔄 IP engellendi, 10s sonra yeni IP ile tekrar deneniyor...`);
+          await logStep(config.id, "ip_change", `IP değiştirildi → ${getCurrentIp() || "doğrudan"}`);
           await new Promise((r) => setTimeout(r, 10000));
-          continue; // aynı config'i yeni IP ile tekrar dene
+          continue;
         }
 
         if (result.found) { console.log("\n🎉 RANDEVU BULUNDU!"); consecutiveErrors = 0; }
-        else if (result.accountBanned) { console.log(`\n⛔ Hesap banlı: ${account.email}`); consecutiveErrors++; }
-        else { if (!result.otpRequired) consecutiveErrors = 0; else consecutiveErrors++; }
+        else if (result.accountBanned) {
+          console.log(`\n⛔ Hesap banlı: ${account.email}`);
+          consecutiveErrors++;
+          // Hata olunca da IP değiştir
+          if (IP_LIST.length > 0) {
+            const newIp = getNextIp();
+            await logStep(config.id, "ip_change", `Hata sonrası IP değişti → ${newIp || "doğrudan"}`);
+          }
+        }
+        else {
+          if (result.otpRequired) {
+            consecutiveErrors++;
+            // OTP hatası olunca da IP değiştir
+            if (IP_LIST.length > 0) {
+              const newIp = getNextIp();
+              await logStep(config.id, "ip_change", `Hata sonrası IP değişti → ${newIp || "doğrudan"}`);
+            }
+          } else {
+            consecutiveErrors = 0;
+          }
+        }
 
         const baseInterval = Math.max(config.check_interval * 1000, CONFIG.BASE_INTERVAL_MS);
         const backoffMultiplier = Math.min(Math.pow(1.5, consecutiveErrors), 5);
