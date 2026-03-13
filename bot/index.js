@@ -1,10 +1,85 @@
 /**
  * VFS Global Randevu Takip Botu v7.1
  * puppeteer-real-browser + Fingerprint + Kayıt Otomasyonu
- * Proxy DEVRE DIŞI
+ * IP Rotasyonu + Fingerprint + Kayıt Otomasyonu
  */
 
 require("dotenv").config();
+
+// ==================== IP ROTATION ====================
+const IP_LIST = (process.env.IP_LIST || "").split(",").map(s => s.trim()).filter(Boolean);
+let currentIpIndex = 0;
+let ipFailCounts = new Map(); // IP başına hata sayısı
+const IP_MAX_FAILS = 3; // Bu kadar ardışık hatadan sonra IP'yi atla
+const IP_BAN_DURATION_MS = Number(process.env.IP_BAN_DURATION_MS || 1800000); // 30 dk ban
+let ipBannedUntil = new Map(); // IP ban süreleri
+
+function getNextIp() {
+  if (IP_LIST.length === 0) return null;
+  
+  const now = Date.now();
+  let attempts = 0;
+  
+  while (attempts < IP_LIST.length) {
+    currentIpIndex = (currentIpIndex + 1) % IP_LIST.length;
+    const ip = IP_LIST[currentIpIndex];
+    const bannedUntil = ipBannedUntil.get(ip) || 0;
+    
+    if (now >= bannedUntil) {
+      console.log(`  [IP] 🔄 Sonraki IP: ${ip} (${currentIpIndex + 1}/${IP_LIST.length})`);
+      return ip;
+    }
+    
+    const remainSec = Math.round((bannedUntil - now) / 1000);
+    console.log(`  [IP] ⏭ ${ip} banlı (${remainSec}s kaldı), atlıyorum...`);
+    attempts++;
+  }
+  
+  // Tüm IP'ler banlıysa en az banlı olanı seç
+  const earliest = IP_LIST.reduce((best, ip) => {
+    const t = ipBannedUntil.get(ip) || 0;
+    const tBest = ipBannedUntil.get(best) || 0;
+    return t < tBest ? ip : best;
+  });
+  console.log(`  [IP] ⚠ Tüm IP'ler banlı, en erken açılanı kullanıyorum: ${earliest}`);
+  ipBannedUntil.delete(earliest);
+  ipFailCounts.set(earliest, 0);
+  currentIpIndex = IP_LIST.indexOf(earliest);
+  return earliest;
+}
+
+function getCurrentIp() {
+  if (IP_LIST.length === 0) return null;
+  return IP_LIST[currentIpIndex];
+}
+
+function markIpSuccess(ip) {
+  if (!ip) return;
+  ipFailCounts.set(ip, 0);
+}
+
+function markIpFail(ip) {
+  if (!ip) return;
+  const count = (ipFailCounts.get(ip) || 0) + 1;
+  ipFailCounts.set(ip, count);
+  console.log(`  [IP] ❌ ${ip} hata: ${count}/${IP_MAX_FAILS}`);
+  
+  if (count >= IP_MAX_FAILS) {
+    ipBannedUntil.set(ip, Date.now() + IP_BAN_DURATION_MS);
+    ipFailCounts.set(ip, 0);
+    console.log(`  [IP] 🚫 ${ip} ${IP_BAN_DURATION_MS / 60000} dk boyunca banlı!`);
+  }
+}
+
+function isPageBlocked(pageContent) {
+  if (!pageContent || pageContent.trim().length < 100) return true; // boş sayfa
+  const lower = pageContent.toLowerCase();
+  return lower.includes("access denied") || 
+         lower.includes("blocked") ||
+         lower.includes("403 forbidden") ||
+         lower.includes("just a moment") ||
+         lower.includes("ray id");
+}
 
 let Solver;
 try {
