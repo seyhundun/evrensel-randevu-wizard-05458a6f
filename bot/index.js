@@ -1034,6 +1034,7 @@ async function checkAppointments(config, account) {
     await humanMove(page);
 
     // STEP 2: Cookie banner
+    await logStep(id, "page_load", "Sayfa yüklendi, cookie banner kontrol ediliyor...");
     console.log("  [2/6] Cookie banner...");
     try {
       const cookieBtn = await page.evaluateHandle(() => {
