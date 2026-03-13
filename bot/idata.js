@@ -166,6 +166,31 @@ async function reportLog(configId, status, message = "", screenshotBase64 = null
   }
 }
 
+// iDATA loglarını idata_tracking_logs tablosuna yaz
+async function idataLog(status, message = "", screenshotBase64 = null) {
+  try {
+    const body = { action: "idata_log", status, message };
+    if (screenshotBase64) body.screenshot_url = screenshotBase64; // edge function handles it
+    await apiPost(body, `idata_log:${status}`);
+  } catch (err) {
+    console.error("  [API] iDATA Log hatası:", err.message);
+  }
+}
+
+// iDATA config'i kontrol et (is_active)
+async function isIdataActive() {
+  try {
+    const res = await fetch(CONFIG.API_URL + "/idata", {
+      method: "GET", headers: apiHeaders,
+    });
+    const data = await res.json();
+    return data?.config?.is_active === true;
+  } catch (err) {
+    console.error("  [API] Config kontrol hatası:", err.message);
+    return false;
+  }
+}
+
 // ==================== 2CAPTCHA IMAGE SOLVER ====================
 async function solveImageCaptcha(page) {
   if (!CONFIG.CAPTCHA_API_KEY) {
