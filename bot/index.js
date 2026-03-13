@@ -2702,7 +2702,7 @@ async function registerVfsAccount(account) {
       console.log("  [REG] Sayfa durumu:", pageText.substring(0, 200));
       await logStep(regLogConfigId, "reg_fail", `OTP ekranı bulunamadı | ${account.email}`);
       await postRegError(account, page, "OTP ekranı bulunamadı (submit sonrası)");
-      await completeRegistration(account.id, false);
+      // completeRegistration çağırma — retry loop tekrar deneyecek
       return false;
     }
 
