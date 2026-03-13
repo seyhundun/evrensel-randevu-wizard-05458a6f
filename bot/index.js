@@ -1814,11 +1814,11 @@ async function registerVfsAccount(account) {
     if (passwordInputs.length < 2) throw new Error("Şifre alanları bulunamadı");
     for (let i = 0; i < passwordInputs.length; i++) {
       await fillAngularInput(page, passwordInputs[i], account.password);
-      await delay(450, 1000);
-      if (i === 0) await humanMove(page);
+      await humanIdle(1000, 2500);
+      if (i === 0) { await humanMove(page); await humanScroll(page); }
     }
     console.log("  [REG] ✅ Şifre girildi");
-    await delay(700, 1300);
+    await humanIdle(2000, 4000); // Şifre sonrası bekle
 
     // TELEFON
     let normalizedPhone = "";
