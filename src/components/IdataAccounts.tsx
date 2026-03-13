@@ -384,9 +384,14 @@ export default function IdataAccounts() {
             </div>
           </div>
 
-          <Button onClick={addAccount} disabled={loading} size="sm" className="gap-1.5">
-            <UserPlus className="w-4 h-4" /> Kayıt Talebi Oluştur
+          <Button onClick={saveAccount} disabled={loading} size="sm" className="gap-1.5">
+            <UserPlus className="w-4 h-4" /> {editingId ? "Güncelle" : "Kayıt Talebi Oluştur"}
           </Button>
+          {editingId && (
+            <Button onClick={resetForm} size="sm" variant="outline" className="gap-1.5 ml-2">
+              İptal
+            </Button>
+          )}
         </Card>
       )}
 
