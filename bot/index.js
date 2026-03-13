@@ -749,14 +749,20 @@ async function solveTurnstile(page) {
     console.log("  [CAPTCHA] API key yok, yalnızca iframe click deneniyor...");
   }
 
-  const clicked = await tryClickTurnstileCheckbox(page);
-  if (!clicked) {
-    console.log("  [CAPTCHA] Turnstile çözülemedi.");
+  const clickedAndSolved = await tryClickTurnstileCheckbox(page);
+  if (!clickedAndSolved) {
+    console.log("  [CAPTCHA] Turnstile çözülemedi (token alınamadı).");
     return false;
   }
 
   const token = await waitForTurnstileToken(page, 9000);
-  return !!token || clicked;
+  if (!token) {
+    console.log("  [CAPTCHA] Turnstile token doğrulanamadı.");
+    return false;
+  }
+
+  console.log("  [CAPTCHA] ✅ Token doğrulandı");
+  return true;
 }
 
 async function _solve(page, context) {
