@@ -190,6 +190,17 @@ export default function IdataAccounts() {
     return <Badge variant="secondary">{acc.status}</Badge>;
   };
 
+  const TURKEY_CITIES = [
+    "Adana","Adıyaman","Afyonkarahisar","Ağrı","Aksaray","Amasya","Ankara","Antalya","Ardahan","Artvin",
+    "Aydın","Balıkesir","Bartın","Batman","Bayburt","Bilecik","Bingöl","Bitlis","Bolu","Burdur",
+    "Bursa","Çanakkale","Çankırı","Çorum","Denizli","Diyarbakır","Düzce","Edirne","Elazığ","Erzincan",
+    "Erzurum","Eskişehir","Gaziantep","Giresun","Gümüşhane","Hakkari","Hatay","Iğdır","Isparta","İstanbul",
+    "İzmir","Kahramanmaraş","Karabük","Karaman","Kars","Kastamonu","Kayseri","Kırıkkale","Kırklareli","Kırşehir",
+    "Kilis","Kocaeli","Konya","Kütahya","Malatya","Manisa","Mardin","Mersin","Muğla","Muş",
+    "Nevşehir","Niğde","Ordu","Osmaniye","Rize","Sakarya","Samsun","Şanlıurfa","Siirt","Sinop",
+    "Sivas","Şırnak","Tekirdağ","Tokat","Trabzon","Tunceli","Uşak","Van","Yalova","Yozgat","Zonguldak"
+  ];
+
   const days = Array.from({ length: 31 }, (_, i) => String(i + 1).padStart(2, "0"));
   const months = Array.from({ length: 12 }, (_, i) => String(i + 1).padStart(2, "0"));
   const currentYear = new Date().getFullYear();
@@ -281,18 +292,14 @@ export default function IdataAccounts() {
           <div className="grid grid-cols-3 gap-3">
             <div>
               <Label className="text-xs">İkametgah Şehri</Label>
-              {availableCities.length > 0 ? (
-                <select
+              <select
                   className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
                   value={form.residence_city}
                   onChange={e => updateForm("residence_city", e.target.value)}
                 >
                   <option value="">Şehir Seçiniz</option>
-                  {availableCities.map(c => <option key={c} value={c}>{c}</option>)}
+                  {TURKEY_CITIES.map(c => <option key={c} value={c}>{c}</option>)}
                 </select>
-              ) : (
-                <Input placeholder="İstanbul" value={form.residence_city} onChange={e => updateForm("residence_city", e.target.value)} />
-              )}
             </div>
             <div>
               <Label className="text-xs">iDATA Ofisi</Label>
