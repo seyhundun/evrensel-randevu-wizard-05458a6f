@@ -2432,8 +2432,14 @@ async function registerVfsAccount(account) {
                     finalText.includes("tamamlandı") || finalText.includes("completed") ||
                     finalText.includes("kayıt tamamlandı") || finalText.includes("registered");
 
-    if (success) console.log("  [REG] ✅ KAYIT BAŞARILI!");
-    else { console.log("  [REG] ⚠ Sonuç belirsiz"); await postRegError(account, page, "OTP sonrası başarı sinyali bulunamadı"); }
+    if (success) {
+      console.log("  [REG] ✅ KAYIT BAŞARILI!");
+      await logStep(regLogConfigId, "reg_complete", `Kayıt başarılı! | ${account.email}`);
+    } else {
+      console.log("  [REG] ⚠ Sonuç belirsiz");
+      await logStep(regLogConfigId, "reg_fail", `Kayıt sonucu belirsiz | ${account.email}`);
+      await postRegError(account, page, "OTP sonrası başarı sinyali bulunamadı");
+    }
     await completeRegistration(account.id, success);
     return success;
   } catch (err) {
