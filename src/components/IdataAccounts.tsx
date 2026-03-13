@@ -56,6 +56,10 @@ interface IdataAccount {
   last_used_at: string | null;
   fail_count: number;
   notes: string | null;
+  manual_otp: string | null;
+  otp_requested_at: string | null;
+  registration_otp: string | null;
+  registration_otp_type: string | null;
 }
 
 interface CityOffice {
