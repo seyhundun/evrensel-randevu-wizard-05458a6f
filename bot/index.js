@@ -50,6 +50,7 @@ function getNextIp() {
 
 function getCurrentIp() {
   if (IP_LIST.length === 0) return null;
+  if (currentIpIndex < 0 || currentIpIndex >= IP_LIST.length) return null;
   return IP_LIST[currentIpIndex];
 }
 
