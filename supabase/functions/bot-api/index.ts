@@ -186,6 +186,19 @@ Deno.serve(async (req) => {
           );
         }
 
+        // Bot logs iDATA activity
+        if (body.action === "idata_log") {
+          const { status: logStatus, message, screenshot_url } = body;
+          const { error: logErr } = await supabase
+            .from("idata_tracking_logs")
+            .insert({ status: logStatus || "info", message, screenshot_url });
+          if (logErr) throw logErr;
+          return new Response(
+            JSON.stringify({ ok: true }),
+            { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          );
+        }
+
         // Bot syncs scraped city→office mappings
         if (body.action === "sync_idata_city_offices") {
           const { mappings } = body; // [{city, office_name, office_value}]

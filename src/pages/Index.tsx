@@ -5,6 +5,7 @@ import ApplicantList from "@/components/ApplicantList";
 import TrackingLogs from "@/components/TrackingLogs";
 import VfsAccounts from "@/components/VfsAccounts";
 import IdataAccounts from "@/components/IdataAccounts";
+import IdataTrackingLogs from "@/components/IdataTrackingLogs";
 import { useTracking } from "@/hooks/useTracking";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
@@ -68,6 +69,7 @@ const Index = () => {
 
           <TabsContent value="idata" className="space-y-8 mt-6">
             <IdataAccounts />
+            <IdataTrackingLogs />
           </TabsContent>
         </Tabs>
       </main>
