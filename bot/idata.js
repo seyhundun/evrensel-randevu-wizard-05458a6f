@@ -544,9 +544,9 @@ async function solveImageCaptcha(page) {
 
 // ==================== BROWSER LAUNCH ====================
 function getResidentialProxyUrl() {
-  // Not: Bu hesapta _session/_region/_isp ekleri 400 döndü, sade format kullanıyoruz
-  const pass = `${EVOMI_PROXY_PASS}_country-${EVOMI_PROXY_COUNTRY}`;
-  console.log(`  [PROXY] 🏠 Residential: ${EVOMI_PROXY_HOST}:${EVOMI_PROXY_PORT} (ülke: ${EVOMI_PROXY_COUNTRY}, auth: simple)`);
+  let pass = `${EVOMI_PROXY_PASS}_country-${EVOMI_PROXY_COUNTRY}`;
+  if (EVOMI_PROXY_REGION) pass += `_region-${EVOMI_PROXY_REGION}`;
+  console.log(`  [PROXY] 🏠 Residential: ${EVOMI_PROXY_HOST}:${EVOMI_PROXY_PORT} (ülke: ${EVOMI_PROXY_COUNTRY}, bölge: ${EVOMI_PROXY_REGION || 'yok'})`);
   return { user: EVOMI_PROXY_USER, pass, host: EVOMI_PROXY_HOST, port: EVOMI_PROXY_PORT };
 }
 
