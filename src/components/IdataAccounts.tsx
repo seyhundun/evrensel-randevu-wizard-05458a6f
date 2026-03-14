@@ -177,8 +177,10 @@ export default function IdataAccounts() {
   };
 
   const saveAccount = async () => {
-    if (!form.first_name || !form.last_name) {
-      toast.error("İsim ve soyisim gerekli");
+    const hasMembership = !!form.membership_number?.trim();
+    // Üyelik no varsa sadece email+şifre yeterli, yoksa isim+soyisim de gerekli
+    if (!hasMembership && (!form.first_name || !form.last_name)) {
+      toast.error("İsim ve soyisim gerekli (veya üyelik numarası girin)");
       return;
     }
     setLoading(true);
@@ -199,15 +201,17 @@ export default function IdataAccounts() {
         setLoading(false);
         return;
       }
+      // Üyelik numarası varsa zaten kayıtlı — kayıt adımını atla, direkt aktif yap
+      const hasMembership = !!form.membership_number?.trim();
       const { error } = await supabase.from("idata_accounts" as any).insert({
         ...form,
-        registration_status: "pending",
+        registration_status: hasMembership ? "completed" : "pending",
         status: "active",
       } as any);
       if (error) {
         toast.error("Hesap eklenemedi: " + error.message);
       } else {
-        toast.success("iDATA kayıt talebi oluşturuldu!");
+        toast.success(hasMembership ? "Hesap eklendi — bot direkt giriş yapacak!" : "iDATA kayıt talebi oluşturuldu!");
         resetForm();
       }
     }
