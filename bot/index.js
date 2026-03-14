@@ -2775,7 +2775,7 @@ async function registerVfsAccount(account) {
 
     // Form yüklenmesini bekle
     console.log("  [REG 4/7] Form bekleniyor...");
-    const registrationFormResult = await waitForRegistrationFormAfterQueue(page);
+    const registrationFormResult = await waitForRegistrationFormAfterQueue(page, regUrl);
     if (!registrationFormResult.ok) {
       const snapshot = await takeScreenshotBase64(page);
       await logStep(regLogConfigId, "reg_fail", `Form yüklenemedi: ${registrationFormResult.reason} | ${account.email}`);
