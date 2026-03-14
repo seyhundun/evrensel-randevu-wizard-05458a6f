@@ -520,28 +520,29 @@ function isLikelyCaptchaCode(raw) {
 async function isCaptchaImageLoaded(page) {
   // CAPTCHA img/canvas elementinin gerçekten yüklenip yüklenmediğini kontrol et
   return await page.evaluate(() => {
-    const keywordRegex = /(captcha|doğrulama|dogrulama|verification|security|code)/i;
+    const keywordRegex = /(captcha|dogrulama|verification|security|securimage|validate)/i;
+
+    // Parent container textContent kullanma — çok geniş, false positive yaratır
+    // Sadece element kendi attr + parent class/id bazlı eşleştir
+    const getAttrMeta = (el) => [
+      el.getAttribute("src") || "", el.getAttribute("alt") || "",
+      el.className || "", el.id || "",
+      (el.parentElement?.className || ""), (el.parentElement?.id || ""),
+    ].join(" ").toLowerCase();
 
     const images = Array.from(document.querySelectorAll("img"));
     const captchaImg = images.find((img) => {
-      const meta = [
-        img.getAttribute("src") || "",
-        img.getAttribute("alt") || "",
-        img.className || "",
-        img.id || "",
-        (img.closest("div, fieldset, section, form")?.textContent || ""),
-      ].join(" ").toLowerCase();
-      return keywordRegex.test(meta);
+      const meta = getAttrMeta(img);
+      if (keywordRegex.test(meta)) return true;
+      // Base64 data URI genelde captcha görseli
+      const src = (img.getAttribute("src") || "");
+      if (src.startsWith("data:image/") && img.naturalWidth >= 60 && img.naturalWidth <= 500) return true;
+      return false;
     });
 
     const canvases = Array.from(document.querySelectorAll("canvas"));
     const captchaCanvas = canvases.find((cv) => {
-      const meta = [
-        cv.getAttribute("aria-label") || "",
-        cv.className || "",
-        cv.id || "",
-        (cv.closest("div, fieldset, section, form")?.textContent || ""),
-      ].join(" ").toLowerCase();
+      const meta = getAttrMeta(cv);
       const w = cv.width || cv.clientWidth || 0;
       const h = cv.height || cv.clientHeight || 0;
       return keywordRegex.test(meta) || (w >= 60 && w <= 500 && h >= 20 && h <= 220);
