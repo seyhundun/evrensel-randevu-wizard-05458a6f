@@ -41,7 +41,8 @@ async function loadProxySettingsFromDB() {
       if (map.captcha_provider) CAPTCHA_PROVIDER = map.captcha_provider.toLowerCase();
       if (map.capsolver_api_key) CAPSOLVER_API_KEY = map.capsolver_api_key;
       if (map.captcha_api_key) { CAPTCHA_API_KEY_2 = map.captcha_api_key; CONFIG.CAPTCHA_API_KEY = map.captcha_api_key; }
-      console.log(`  [DB] ✅ Ayarlar DB'den yüklendi: proxy=${EVOMI_PROXY_HOST}:${EVOMI_PROXY_PORT} ülke=${EVOMI_PROXY_COUNTRY} bölge=${EVOMI_PROXY_REGION || 'yok'} captcha=${CAPTCHA_PROVIDER}`);
+      if (map.ip_rotation_interval) IP_ROTATION_INTERVAL_MS = Number(map.ip_rotation_interval) * 60 * 1000;
+      console.log(`  [DB] ✅ Ayarlar DB'den yüklendi: proxy=${EVOMI_PROXY_HOST}:${EVOMI_PROXY_PORT} ülke=${EVOMI_PROXY_COUNTRY} bölge=${EVOMI_PROXY_REGION || 'yok'} captcha=${CAPTCHA_PROVIDER} ip_rot=${IP_ROTATION_INTERVAL_MS/60000}dk`);
     }
   } catch (e) {
     console.warn(`  [DB] ⚠️ DB'den proxy ayarı okunamadı, .env kullanılıyor: ${e.message}`);
