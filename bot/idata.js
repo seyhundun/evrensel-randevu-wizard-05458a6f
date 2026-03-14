@@ -1158,25 +1158,25 @@ async function loginToIdata(page, account) {
     // 1) Üyelik numarası — ilk text input
     if (account.membership_number && textInputs[0]) {
       console.log(`  [LOGIN] Üyelik no giriliyor: ${account.membership_number}`);
-      await textInputs[0].click({ clickCount: 3 });
-      await textInputs[0].type(account.membership_number, { delay: 50 });
-      await delay(500, 1000);
+      const typed = await humanType(page, textInputs[0], account.membership_number, { minDelay: 140, maxDelay: 300, retries: 3 });
+      if (!typed) console.log("  [LOGIN] ⚠ Üyelik no tam yazılamadı");
+      await delay(700, 1200);
     }
 
     // 2) E-Posta — ikinci text input
     if (textInputs[1]) {
       console.log(`  [LOGIN] E-Posta giriliyor: ${account.email}`);
-      await textInputs[1].click({ clickCount: 3 });
-      await textInputs[1].type(account.email, { delay: 50 });
-      await delay(500, 1000);
+      const typed = await humanType(page, textInputs[1], account.email, { minDelay: 130, maxDelay: 280, retries: 3 });
+      if (!typed) console.log("  [LOGIN] ⚠ E-posta tam yazılamadı");
+      await delay(700, 1200);
     }
 
     // 3) Şifre — password input
     if (passwordInputs[0]) {
       console.log(`  [LOGIN] Şifre giriliyor`);
-      await passwordInputs[0].click({ clickCount: 3 });
-      await passwordInputs[0].type(account.password, { delay: 50 });
-      await delay(1000, 2000);
+      const typed = await humanType(page, passwordInputs[0], account.password, { minDelay: 120, maxDelay: 260, retries: 3 });
+      if (!typed) console.log("  [LOGIN] ⚠ Şifre tam yazılamadı");
+      await delay(1000, 1800);
     }
 
     // 4) CAPTCHA çöz ve son text input'a gir
@@ -1187,9 +1187,11 @@ async function loginToIdata(page, account) {
       const captchaInput = freshTextInputs[freshTextInputs.length - 1]; // Son text input
       if (captchaInput) {
         console.log(`  [LOGIN] CAPTCHA kodu giriliyor: ${captchaCode}`);
-        await captchaInput.click({ clickCount: 3 });
-        await captchaInput.type(captchaCode, { delay: 50 });
-      } else {
+        const typed = await humanType(page, captchaInput, captchaCode, { minDelay: 140, maxDelay: 300, retries: 2 });
+        if (!typed) console.log("  [LOGIN] ⚠ CAPTCHA input tam dolmadı, evaluate fallback deneniyor");
+      }
+
+      if (!captchaInput) {
         console.log(`  [LOGIN] ⚠ CAPTCHA input bulunamadı, evaluate ile deneniyor`);
         await page.evaluate((code) => {
           const inputs = Array.from(document.querySelectorAll('input[type="text"]'));
@@ -1202,7 +1204,7 @@ async function loginToIdata(page, account) {
           }
         }, captchaCode);
       }
-      await delay(500, 1000);
+      await delay(700, 1200);
     }
 
     // Giriş butonu
