@@ -75,6 +75,17 @@ let currentIpIndex = -1;
 const ipBannedUntil = new Map();
 const IP_BAN_DURATION_MS = Number(process.env.IP_BAN_DURATION_MS || 1800000);
 
+// ==================== PROXY CITY ROTATION ====================
+const PROXY_CITIES = ["ankara", "adana", "konya", "istanbul", "izmir", "bursa", "antalya"];
+let currentCityIndex = -1;
+
+function getNextProxyCity() {
+  currentCityIndex = (currentCityIndex + 1) % PROXY_CITIES.length;
+  const city = PROXY_CITIES[currentCityIndex];
+  console.log(`  [PROXY] 🏙 Şehir rotasyonu: ${city} (${currentCityIndex + 1}/${PROXY_CITIES.length})`);
+  return city;
+}
+
 function getNextIp() {
   if (IP_LIST.length === 0) return null;
   const now = Date.now();
