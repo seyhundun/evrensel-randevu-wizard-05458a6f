@@ -2432,9 +2432,9 @@ async function mainLoop() {
                 continue; // CF engeli — sonraki IP
               }
 
-              if (["captcha_failed", "captcha_invalid"].includes(loginResult.reason)) {
+              if (["captcha_failed", "captcha_invalid", "login_failed", "otp_failed", "otp_submit_not_found", "submit_not_found"].includes(loginResult.reason)) {
                 allCfBlocked = false;
-                console.log(`  [LOGIN] 🔁 CAPTCHA sebebiyle yeniden denenecek (${attempt}/3)`);
+                console.log(`  [LOGIN] 🔁 ${loginResult.reason} sebebiyle yeniden denenecek (${attempt}/3)`);
                 if (attempt < 3) continue;
               }
 
