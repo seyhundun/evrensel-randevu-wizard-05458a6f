@@ -1154,6 +1154,8 @@ async function selectDropdownOption(page, dropdownSelector, optionText) {
 async function tryImapOtp(accountId) {
   try {
     const fetch = (await import("node-fetch")).default;
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 15000); // 15s timeout
     const res = await fetch(
       `https://ocrpzwrsyiprfuzsyivf.supabase.co/functions/v1/read-otp`,
       {
@@ -1164,8 +1166,10 @@ async function tryImapOtp(accountId) {
           Authorization: `Bearer ${CONFIG.API_KEY}`,
         },
         body: JSON.stringify({ account_id: accountId, account_type: "idata" }),
+        signal: controller.signal,
       }
     );
+    clearTimeout(timeout);
     const data = await res.json();
     if (data?.ok && data?.otp) {
       return data.otp;
