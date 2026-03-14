@@ -110,9 +110,13 @@ export default function BotSettingsPanel() {
       });
       if (error) throw error;
       if (data?.ok) {
-        setEvomiRegions(data.regions || []);
+        setEvomiRegions((data.regions || []).map((r: any) => typeof r === "string" ? { id: r, name: r } : { id: r.id || r.name, name: r.name || r.id }));
         setEvomiCities(data.cities || []);
-        toast.success(`${(data.regions || []).length} bölge, ${(data.cities || []).length} şehir yüklendi`);
+        // Parse countries object { "TR": "Turkey", "DE": "Germany", ... }
+        const countriesObj = data.countries || {};
+        const countriesList = Object.entries(countriesObj).map(([code, name]) => ({ code, name: String(name) })).sort((a, b) => a.name.localeCompare(b.name));
+        setEvomiCountries(countriesList);
+        toast.success(`${(data.regions || []).length} bölge, ${countriesList.length} ülke yüklendi`);
       } else {
         toast.error(data?.error || "Bölge listesi alınamadı");
       }
