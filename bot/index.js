@@ -59,6 +59,17 @@ const IP_BAN_DURATION_MS = Number(process.env.IP_BAN_DURATION_MS || 1800000);
 let ipBannedUntil = new Map();
 let residentialSessionId = 0;
 
+// ==================== PROXY CITY ROTATION ====================
+const PROXY_CITIES = ["ankara", "adana", "konya", "istanbul", "izmir", "bursa", "antalya"];
+let currentCityIndex = -1;
+
+function getNextProxyCity() {
+  currentCityIndex = (currentCityIndex + 1) % PROXY_CITIES.length;
+  const city = PROXY_CITIES[currentCityIndex];
+  console.log(`  [PROXY] 🏙 Şehir rotasyonu: ${city} (${currentCityIndex + 1}/${PROXY_CITIES.length})`);
+  return city;
+}
+
 function getNextIp() {
   if (IP_LIST.length === 0) return null;
   
@@ -1498,13 +1509,14 @@ function cleanupUserDataDir(dir) {
 }
 
 function getResidentialProxyUrl() {
-  // Her çağrıda yeni session ID = yeni IP
+  // Her çağrıda yeni session ID = yeni IP + şehir rotasyonu
   // Evomi formatı: parametreler PASSWORD'a eklenir (username değil)
   residentialSessionId++;
   const sessionId = `${Date.now()}_${residentialSessionId}`;
-  const pass = `${EVOMI_PROXY_PASS}_country-${EVOMI_PROXY_COUNTRY}_session-${sessionId}`;
-  console.log(`  [PROXY] 🏠 Residential proxy: ${EVOMI_PROXY_HOST}:${EVOMI_PROXY_PORT} (session: ${sessionId}, ülke: ${EVOMI_PROXY_COUNTRY})`);
-  return { proxyUrl: `http://${EVOMI_PROXY_USER}:${pass}@${EVOMI_PROXY_HOST}:${EVOMI_PROXY_PORT}`, user: EVOMI_PROXY_USER, pass, host: EVOMI_PROXY_HOST, port: EVOMI_PROXY_PORT };
+  const city = getNextProxyCity();
+  const pass = `${EVOMI_PROXY_PASS}_country-${EVOMI_PROXY_COUNTRY}_city-${city}_session-${sessionId}`;
+  console.log(`  [PROXY] 🏠 Residential proxy: ${EVOMI_PROXY_HOST}:${EVOMI_PROXY_PORT} (session: ${sessionId}, ülke: ${EVOMI_PROXY_COUNTRY}, şehir: ${city})`);
+  return { proxyUrl: `http://${EVOMI_PROXY_USER}:${pass}@${EVOMI_PROXY_HOST}:${EVOMI_PROXY_PORT}`, user: EVOMI_PROXY_USER, pass, host: EVOMI_PROXY_HOST, port: EVOMI_PROXY_PORT, city };
 }
 
 async function launchBrowser(proxyIp = null) {
