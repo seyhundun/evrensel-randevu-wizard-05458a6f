@@ -38,6 +38,9 @@ export default function BotSettingsPanel() {
   const [showCaptchaKey, setShowCaptchaKey] = useState(false);
   const [currentIp, setCurrentIp] = useState<string | null>(null);
   const [lastIpReset, setLastIpReset] = useState<string | null>(null);
+  const [evomiRegions, setEvomiRegions] = useState<string[]>([]);
+  const [evomiCities, setEvomiCities] = useState<{ name: string; region?: string }[]>([]);
+  const [loadingRegions, setLoadingRegions] = useState(false);
 
   // Local draft state for editable fields
   const [draft, setDraft] = useState<Record<string, string>>({});
