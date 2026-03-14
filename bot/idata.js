@@ -586,8 +586,15 @@ async function getCaptchaImageBase64(page) {
 
   // 1) CAPTCHA kaynağını bul (img veya canvas)
   const target = await page.evaluate(() => {
-    const keywordRegex = /(captcha|doğrulama|dogrulama|verification|security|code)/i;
-    const denyRegex = /(logo|icon|brand|header|footer|svg)/i;
+    const keywordRegex = /(captcha|dogrulama|verification|security|securimage|validate)/i;
+    const denyRegex = /(logo|icon|brand|header|footer|svg|navbar|menu)/i;
+
+    // Element attr meta — parentText yerine parent class/id kullan
+    const getAttrMeta = (el) => [
+      el.getAttribute("src") || "", el.getAttribute("alt") || "",
+      el.className || "", el.id || "",
+      (el.parentElement?.className || ""), (el.parentElement?.id || ""),
+    ].join(" ").toLowerCase();
 
     const inputs = Array.from(document.querySelectorAll("input"));
     const captchaInputRects = inputs
@@ -595,10 +602,8 @@ async function getCaptchaImageBase64(page) {
         const meta = [
           input.name, input.id, input.placeholder,
           input.getAttribute("aria-label"),
-          input.closest("label")?.textContent,
-          input.closest("div, fieldset, section, form")?.textContent,
         ].filter(Boolean).join(" ").toLowerCase();
-        return keywordRegex.test(meta) && input.type !== "hidden";
+        return /(captcha|dogrulama|verification|security)/i.test(meta) && input.type !== "hidden";
       })
       .map((input) => input.getBoundingClientRect())
       .filter((rect) => rect.width > 0 && rect.height > 0);
@@ -621,11 +626,7 @@ async function getCaptchaImageBase64(page) {
 
     const imgCandidates = Array.from(document.querySelectorAll("img")).map((img, index) => {
       const src = (img.getAttribute("src") || "").toLowerCase();
-      const alt = (img.getAttribute("alt") || "").toLowerCase();
-      const cls = (img.className || "").toLowerCase();
-      const id = (img.id || "").toLowerCase();
-      const parentText = (img.closest("div, fieldset, section, form")?.textContent || "").toLowerCase();
-      const meta = `${src} ${alt} ${cls} ${id} ${parentText}`;
+      const meta = getAttrMeta(img);
       const rect = img.getBoundingClientRect();
       const width = img.naturalWidth || rect.width || img.width || 0;
       const height = img.naturalHeight || rect.height || img.height || 0;
@@ -635,7 +636,8 @@ async function getCaptchaImageBase64(page) {
       if (denyRegex.test(meta)) score -= 80;
       if (width >= 60 && width <= 500 && height >= 20 && height <= 220) score += 20;
       else score -= 15;
-      if (src.includes("captcha") || src.includes("verify") || src.includes("dogrulama")) score += 30;
+      if (src.includes("captcha") || src.includes("verify") || src.includes("dogrulama") || src.includes("securimage")) score += 30;
+      if (src.startsWith("data:image/") && width >= 60 && height >= 20) score += 40; // base64 data URI genelde captcha
       if (src.startsWith("data:image/svg")) score -= 50;
       score += scoreByDistance(rect);
 
@@ -650,11 +652,7 @@ async function getCaptchaImageBase64(page) {
     });
 
     const canvasCandidates = Array.from(document.querySelectorAll("canvas")).map((cv, index) => {
-      const cls = (cv.className || "").toLowerCase();
-      const id = (cv.id || "").toLowerCase();
-      const aria = (cv.getAttribute("aria-label") || "").toLowerCase();
-      const parentText = (cv.closest("div, fieldset, section, form")?.textContent || "").toLowerCase();
-      const meta = `${cls} ${id} ${aria} ${parentText}`;
+      const meta = getAttrMeta(cv);
       const rect = cv.getBoundingClientRect();
       const width = cv.width || rect.width || cv.clientWidth || 0;
       const height = cv.height || rect.height || cv.clientHeight || 0;
