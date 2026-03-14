@@ -502,17 +502,21 @@ async function clearCfBlocked() {
 
 
 function normalizeCaptchaCode(raw) {
-  return String(raw || "")
-    .replace(/[^a-zA-Z0-9]/g, "")
-    .toUpperCase()
-    .trim();
+  // iDATA CAPTCHA sadece rakam içerir — harfleri rakama çevir
+  let code = String(raw || "").trim().toUpperCase();
+  // Benzer harf→rakam dönüşümleri
+  const letterToDigit = { O: "0", D: "0", Q: "0", I: "1", L: "1", Z: "2", E: "3", A: "4", S: "5", G: "6", B: "8", g: "9" };
+  code = code.replace(/[^0-9A-Za-z]/g, "");
+  code = code.split("").map(ch => letterToDigit[ch] || letterToDigit[ch.toUpperCase()] || ch).join("");
+  // Son olarak sadece rakamları tut
+  code = code.replace(/[^0-9]/g, "");
+  return code;
 }
 
 function isLikelyCaptchaCode(raw) {
   const code = normalizeCaptchaCode(raw);
   if (!code) return false;
   if (code.length < 4 || code.length > 6) return false;
-  if (/^(IDATA|ITALYA|ITALIA|LOGIN|REGISTER|CAPTCHA|KODU)$/i.test(code)) return false;
   if (/^(.)\1{3,}$/.test(code)) return false;
   return true;
 }
