@@ -441,6 +441,20 @@ export default function IdataAccounts() {
             </div>
           </div>
 
+          <h3 className="text-sm font-semibold pt-2">📧 IMAP Ayarları (Otomatik OTP)</h3>
+          <p className="text-[10px] text-muted-foreground -mt-2">IMAP bilgileri girilirse giriş OTP kodu otomatik e-postadan çekilir. Girilmezse manuel giriş yaparsınız.</p>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <Label className="text-xs">IMAP Host</Label>
+              <Input placeholder="imap.gmail.com" value={form.imap_host} onChange={e => updateForm("imap_host", e.target.value)} />
+            </div>
+            <div>
+              <Label className="text-xs">IMAP Şifre (App Password)</Label>
+              <Input type="password" placeholder="Gmail App Password" value={form.imap_password} onChange={e => updateForm("imap_password", e.target.value)} />
+              <p className="text-[10px] text-muted-foreground mt-0.5">Gmail için: Hesap → Güvenlik → Uygulama Şifreleri</p>
+            </div>
+          </div>
+
           <Button onClick={saveAccount} disabled={loading} size="sm" className="gap-1.5">
             <UserPlus className="w-4 h-4" /> {editingId ? "Güncelle" : "Kayıt Talebi Oluştur"}
           </Button>
