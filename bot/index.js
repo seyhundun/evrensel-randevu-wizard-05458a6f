@@ -1596,6 +1596,7 @@ async function launchBrowser(proxyIp = null) {
     "--disable-setuid-sandbox",
     "--disable-dev-shm-usage",
     "--window-size=1920,1080",
+    "--start-maximized",
   ];
   
   let proxyConfig = undefined;
