@@ -53,6 +53,7 @@ function SidebarSection({ icon, title, defaultOpen = false, children }: { icon: 
 const Index = () => {
   const t = useTracking();
   const { signOut } = useAuth();
+  const navigate = useNavigate();
   const [sidebarOpen, setSidebarOpen] = useState(true);
 
   return (
