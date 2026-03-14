@@ -373,22 +373,38 @@ export default function BotSettingsPanel() {
             </Button>
           </div>
           {evomiRegions.length > 0 ? (
-            <Select
-              value={getDraft("proxy_region") || "__none__"}
-              onValueChange={v => setDraftValue("proxy_region", v === "__none__" ? "" : v)}
-            >
-              <SelectTrigger className="h-8 text-xs">
-                <SelectValue placeholder="Bölge seçin..." />
-              </SelectTrigger>
-              <SelectContent className="max-h-60">
-                <SelectItem value="__none__">Yok (rastgele)</SelectItem>
-                {evomiRegions.map((r, i) => {
-                  const val = typeof r === "string" ? r : (r as any).name || (r as any).id || String(i);
-                  const label = typeof r === "string" ? r : (r as any).name || JSON.stringify(r);
-                  return <SelectItem key={val + i} value={val}>{label}</SelectItem>;
-                })}
-              </SelectContent>
-            </Select>
+            <Popover open={regionPopoverOpen} onOpenChange={setRegionPopoverOpen}>
+              <PopoverTrigger asChild>
+                <Button variant="outline" role="combobox" className="h-8 text-xs justify-between w-full font-mono">
+                  {getDraft("proxy_region") || "Yok (rastgele)"}
+                  <ChevronsUpDown className="ml-2 h-3 w-3 shrink-0 opacity-50" />
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent className="w-[--radix-popover-trigger-width] p-0" align="start">
+                <Command>
+                  <CommandInput placeholder="Bölge ara..." className="h-8 text-xs" />
+                  <CommandList>
+                    <CommandEmpty>Sonuç bulunamadı</CommandEmpty>
+                    <CommandGroup>
+                      <CommandItem value="__none__" onSelect={() => { setDraftValue("proxy_region", ""); setRegionPopoverOpen(false); }}>
+                        <Check className={`mr-2 h-3 w-3 ${!getDraft("proxy_region") ? "opacity-100" : "opacity-0"}`} />
+                        Yok (rastgele)
+                      </CommandItem>
+                      {evomiRegions.map((r, i) => {
+                        const val = typeof r === "string" ? r : (r as any).name || (r as any).id || String(i);
+                        const label = typeof r === "string" ? r : (r as any).name || JSON.stringify(r);
+                        return (
+                          <CommandItem key={val + i} value={val} onSelect={() => { setDraftValue("proxy_region", val); setRegionPopoverOpen(false); }}>
+                            <Check className={`mr-2 h-3 w-3 ${getDraft("proxy_region") === val ? "opacity-100" : "opacity-0"}`} />
+                            {label}
+                          </CommandItem>
+                        );
+                      })}
+                    </CommandGroup>
+                  </CommandList>
+                </Command>
+              </PopoverContent>
+            </Popover>
           ) : (
             <Input
               className="h-8 text-xs font-mono"
