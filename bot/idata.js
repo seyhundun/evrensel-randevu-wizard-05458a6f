@@ -513,11 +513,50 @@ function isLikelyCaptchaCode(raw) {
   return true;
 }
 
+async function isCaptchaImageLoaded(page) {
+  // CAPTCHA img elementinin gerçekten yüklenip yüklenmediğini kontrol et
+  return await page.evaluate(() => {
+    const images = Array.from(document.querySelectorAll("img"));
+    const captchaImg = images.find((img) => {
+      const meta = [
+        img.getAttribute("src") || "",
+        img.getAttribute("alt") || "",
+        img.className || "",
+        img.id || "",
+        (img.closest("div, fieldset, section, form")?.textContent || ""),
+      ].join(" ").toLowerCase();
+      return /(captcha|doğrulama|dogrulama|verification|code)/i.test(meta);
+    });
+    if (!captchaImg) return { found: false, loaded: false, reason: "no_captcha_img" };
+    
+    const loaded = captchaImg.complete && captchaImg.naturalWidth > 10 && captchaImg.naturalHeight > 10;
+    const src = (captchaImg.getAttribute("src") || "").substring(0, 120);
+    return {
+      found: true,
+      loaded,
+      naturalWidth: captchaImg.naturalWidth,
+      naturalHeight: captchaImg.naturalHeight,
+      complete: captchaImg.complete,
+      src,
+      reason: loaded ? "ok" : "broken_or_loading",
+    };
+  });
+}
+
+async function waitForCaptchaImageLoad(page, maxWaitMs = 8000) {
+  const startTime = Date.now();
+  while (Date.now() - startTime < maxWaitMs) {
+    const status = await isCaptchaImageLoaded(page);
+    if (status.loaded) return status;
+    await delay(600, 1000);
+  }
+  return await isCaptchaImageLoaded(page);
+}
+
 async function getCaptchaImageBase64(page) {
   // 1) Sayfadaki CAPTCHA img elementini bul
   const imgHandle = await page.evaluateHandle(() => {
     const keywordRegex = /(captcha|doğrulama|dogrulama|verification|security|code)/i;
-    // NOT: "idata" burada yasaklı olmamalı; captcha src'si idata domaininden geliyor olabilir
     const denyRegex = /(logo|icon|brand|header|footer|svg)/i;
 
     const inputs = Array.from(document.querySelectorAll("input"));
@@ -549,8 +588,6 @@ async function getCaptchaImageBase64(page) {
       let score = 0;
       if (keywordRegex.test(meta)) score += 60;
       if (denyRegex.test(meta)) score -= 80;
-
-      // iDATA CAPTCHA boyutları için daha geniş tolerans
       if (width >= 60 && width <= 420 && height >= 20 && height <= 180) score += 20;
       else score -= 15;
       if (src.includes("captcha") || src.includes("verify") || src.includes("dogrulama")) score += 30;
@@ -585,7 +622,17 @@ async function getCaptchaImageBase64(page) {
     return { base64: null, reason: "captcha_img_not_found" };
   }
 
-  // 3) Puppeteer element screenshot — cross-origin sorununu atlar
+  // 3) Görselin gerçekten yüklendiğini kontrol et
+  const isLoaded = await page.evaluate((el) => {
+    return el.complete && el.naturalWidth > 10 && el.naturalHeight > 10;
+  }, element);
+
+  if (!isLoaded) {
+    console.log("  [CAPTCHA] ⚠ Captcha img bulundu ama yüklenmemiş (broken image)");
+    return { base64: null, reason: "captcha_img_broken" };
+  }
+
+  // 4) Puppeteer element screenshot — cross-origin sorununu atlar
   try {
     const screenshotBuffer = await element.screenshot({ encoding: "base64" });
     const meta = await page.evaluate((el) => {
@@ -650,24 +697,87 @@ async function refreshCaptchaImage(page) {
 }
 
 async function solveImageCaptcha(page, options = {}) {
-  const { maxAttempts = 3 } = options;
+  const { maxAttempts = 4 } = options;
   const fetch = (await import("node-fetch")).default;
+  let pageReloaded = false;
 
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
     try {
       if (attempt > 1) {
         console.log(`  [CAPTCHA] 🔁 Yeni deneme ${attempt}/${maxAttempts}...`);
         const refreshed = await refreshCaptchaImage(page);
-        if (refreshed) await delay(1800, 2800);
+        if (refreshed) {
+          console.log("  [CAPTCHA] Resim yenileme butonu tıklandı, bekleniyor...");
+          await delay(2500, 4000);
+        } else {
+          await delay(1200, 2000);
+        }
       } else {
-        await delay(1200, 2200);
+        await delay(1500, 2500);
       }
 
+      // CAPTCHA görselinin yüklenmesini bekle (max 8sn)
+      console.log("  [CAPTCHA] Görsel yüklenmesi bekleniyor...");
+      const loadStatus = await waitForCaptchaImageLoad(page, 8000);
+      console.log(`  [CAPTCHA] Görsel durumu: found=${loadStatus.found} loaded=${loadStatus.loaded} w=${loadStatus.naturalWidth || 0} h=${loadStatus.naturalHeight || 0} reason=${loadStatus.reason}`);
+
+      // Görsel yüklenmemişse → yenileme dene
+      if (!loadStatus.loaded) {
+        console.log(`  [CAPTCHA] ⚠ Görsel yüklenmedi (${loadStatus.reason})`);
+        await idataLog("login_captcha", `CAPTCHA görsel yüklenmedi: ${loadStatus.reason} (deneme ${attempt}/${maxAttempts})`);
+
+        // İlk başarısızlıkta resim yenileme butonu tıkla
+        const refreshed = await refreshCaptchaImage(page);
+        if (refreshed) {
+          console.log("  [CAPTCHA] 🔄 Resim yenileme butonu tıklandı");
+          await delay(3000, 5000);
+          // Yenileme sonrası tekrar kontrol et
+          const recheck = await waitForCaptchaImageLoad(page, 6000);
+          if (recheck.loaded) {
+            console.log("  [CAPTCHA] ✅ Yenileme sonrası görsel yüklendi");
+          } else {
+            console.log("  [CAPTCHA] ⚠ Yenileme sonrası da yüklenmedi");
+            // Img src'yi force yenile (sayfa reload'dan kaçın, form bilgileri korunur)
+            console.log("  [CAPTCHA] 🔄 img src force yenileniyor...");
+            await page.evaluate(() => {
+              const images = Array.from(document.querySelectorAll("img"));
+              images.forEach((img) => {
+                const src = img.getAttribute("src") || "";
+                if (/(captcha|doğrulama|dogrulama|verify|code)/i.test(src + (img.alt || "") + (img.className || ""))) {
+                  const sep = src.includes("?") ? "&" : "?";
+                  img.setAttribute("src", `${src}${sep}_t=${Date.now()}`);
+                }
+              });
+            });
+            await delay(3000, 5000);
+            continue;
+          }
+        } else {
+          // Yenileme butonu bulunamadı → img src force yenile
+          console.log("  [CAPTCHA] 🔄 Yenileme butonu yok, img src force yenileniyor...");
+          await idataLog("login_captcha", "img src force yenileme: CAPTCHA görseli yüklenemedi");
+          await page.evaluate(() => {
+            const images = Array.from(document.querySelectorAll("img"));
+            images.forEach((img) => {
+              const src = img.getAttribute("src") || "";
+              if (/(captcha|doğrulama|dogrulama|verify|code)/i.test(src + (img.alt || "") + (img.className || ""))) {
+                const sep = src.includes("?") ? "&" : "?";
+                img.setAttribute("src", `${src}${sep}_t=${Date.now()}`);
+              }
+            });
+          });
+          await delay(3000, 5000);
+          continue;
+        }
+      }
+
+      // Görsel yüklendi, screenshot al
       const capture = await getCaptchaImageBase64(page);
       const captchaImgBase64 = capture?.base64;
 
       if (!captchaImgBase64) {
-        console.log(`  [CAPTCHA] ⚠ Captcha resmi bulunamadı (deneme ${attempt}/${maxAttempts}): ${capture?.reason || "unknown"}`);
+        console.log(`  [CAPTCHA] ⚠ Captcha base64 alınamadı (deneme ${attempt}/${maxAttempts}): ${capture?.reason || "unknown"}`);
+        await idataLog("login_captcha", `CAPTCHA base64 alınamadı: ${capture?.reason || "unknown"}`);
         await delay(1200, 2000);
         continue;
       }
