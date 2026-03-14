@@ -191,7 +191,7 @@ export default function TrackingLogs({ configId }: TrackingLogsProps) {
   const filteredLogs = logs.filter((log) => {
     if (filter === "all") return true;
     if (filter === "login") return log.status.startsWith("login");
-    if (filter === "search") return log.status.startsWith("search") || log.status === "checking" || log.status === "found" || log.status === "no_slots" || log.status === "queue_waiting";
+    if (filter === "search") return log.status.startsWith("search") || log.status.startsWith("appt") || log.status === "checking" || log.status === "found" || log.status === "no_slots" || log.status === "queue_waiting";
     if (filter === "reg") return log.status.startsWith("reg");
     if (filter === "ip") return log.status.startsWith("ip_") || log.status === "network_error" || log.status === "bot_start";
     if (filter === "error") return log.status === "error" || log.status.includes("fail") || log.status === "network_error" || log.status === "ip_blocked";
