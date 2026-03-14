@@ -14,6 +14,7 @@ import VfsAccounts from "@/components/VfsAccounts";
 import IdataControlPanel from "@/components/IdataControlPanel";
 import IdataAccounts from "@/components/IdataAccounts";
 import IdataTrackingLogs from "@/components/IdataTrackingLogs";
+import BotSettingsPanel from "@/components/BotSettingsPanel";
 import { useTracking } from "@/hooks/useTracking";
 
 function LiveClock() {
