@@ -112,6 +112,13 @@ function getNextIp() {
   return earliest;
 }
 
+function getProxyLabel(ip) {
+  if (PROXY_MODE === "residential" && EVOMI_PROXY_USER) {
+    return `residential (${EVOMI_PROXY_REGION || EVOMI_PROXY_COUNTRY})`;
+  }
+  return ip || "doğrudan";
+}
+
 function markIpBanned(ip) {
   if (!ip) return;
   ipBannedUntil.set(ip, Date.now() + IP_BAN_DURATION_MS);
