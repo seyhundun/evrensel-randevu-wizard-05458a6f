@@ -30,7 +30,6 @@ export default function BotActions({
   const [retrying, setRetrying] = useState(false);
   const [changingIp, setChangingIp] = useState(false);
   const isActive = status === "searching";
-  const isActive = status === "searching";
 
   const requestScreenshot = async () => {
     if (!configId) { toast.error("Aktif görev yok"); return; }
@@ -52,6 +51,17 @@ export default function BotActions({
       .eq("id", configId);
     toast.success("Captcha Reset gönderildi, yeni IP ile denenecek");
     setTimeout(() => setRetrying(false), 3000);
+  };
+
+  const changeIp = async () => {
+    if (!configId) { toast.error("Aktif görev yok"); return; }
+    setChangingIp(true);
+    await supabase
+      .from("tracking_configs")
+      .update({ cf_retry_requested: true, cf_blocked_since: null, cf_blocked_ip: null } as any)
+      .eq("id", configId);
+    toast.success("🔄 IP değiştirme talebi gönderildi, bot yeni IP ile devam edecek");
+    setTimeout(() => setChangingIp(false), 3000);
   };
 
   const actions = [
