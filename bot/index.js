@@ -98,6 +98,15 @@ try {
   console.log("⚠ 2captcha-ts yüklü değil, HTTP fallback ile devam edilecek.");
 }
 
+// ==================== CAPTCHA PROVIDER ====================
+// CAPTCHA_PROVIDER: "capsolver" | "2captcha" | "auto" (auto = capsolver önce, 2captcha fallback)
+const CAPTCHA_PROVIDER = (process.env.CAPTCHA_PROVIDER || "auto").toLowerCase();
+const CAPSOLVER_API_KEY = (process.env.CAPSOLVER_API_KEY || "").trim();
+
+console.log(`🔐 CAPTCHA Provider: ${CAPTCHA_PROVIDER}`);
+if (CAPSOLVER_API_KEY) console.log(`🔐 Capsolver API key: var (${CAPSOLVER_API_KEY.length} karakter)`);
+
+
 // Ülke → VFS URL kodu eşlemesi
 const COUNTRY_VFS_CODES = {
   france: "fra",
