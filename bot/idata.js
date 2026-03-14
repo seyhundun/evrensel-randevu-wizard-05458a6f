@@ -1174,6 +1174,76 @@ async function waitForLoginOtp(accountId, timeoutMs = 180000) {
   }
   return null;
 }
+
+// ==================== AUTH SUBMIT HELPER ====================
+async function clickAuthSubmitButton(page, phase = "login") {
+  const result = await page.evaluate(() => {
+    const isVisible = (el) => {
+      const rect = el.getBoundingClientRect();
+      const st = window.getComputedStyle(el);
+      return rect.width > 20 && rect.height > 20 && st.visibility !== "hidden" && st.display !== "none";
+    };
+
+    const textOf = (el) => ((el.textContent || el.value || el.getAttribute("value") || "")
+      .trim()
+      .toLowerCase()
+      .normalize("NFC"));
+
+    const all = Array.from(document.querySelectorAll("button, input[type='submit'], input[type='button'], a, [role='button']"))
+      .filter(isVisible);
+
+    const scored = all.map((el) => {
+      const txt = textOf(el);
+      let score = 0;
+      if (/^(giriş|giris|login|sign in|oturum aç)$/.test(txt)) score += 120;
+      else if (/(giriş|giris|login|sign in|oturum)/.test(txt)) score += 90;
+      if (/(doğrula|dogrula|onayla|verify|gönder|submit|devam)/.test(txt)) score += 70;
+      if ((el.type || "").toLowerCase() === "submit") score += 25;
+      if (el.hasAttribute("disabled")) score -= 50;
+      return { el, txt, score };
+    }).sort((a, b) => b.score - a.score);
+
+    let target = scored[0]?.el || document.querySelector('button[type="submit"], input[type="submit"]');
+
+    if (target) {
+      target.removeAttribute?.("disabled");
+      target.removeAttribute?.("aria-disabled");
+      target.classList?.remove("disabled");
+
+      const fire = (type) => target.dispatchEvent(new MouseEvent(type, { bubbles: true, cancelable: true, view: window }));
+      fire("mouseover");
+      fire("mousedown");
+      fire("mouseup");
+      target.click();
+
+      const form = target.closest?.("form") || document.querySelector("form");
+      if (form) {
+        if (typeof form.requestSubmit === "function") form.requestSubmit();
+      }
+
+      return {
+        found: true,
+        tag: target.tagName,
+        text: textOf(target).slice(0, 40),
+        score: scored[0]?.score ?? null,
+      };
+    }
+
+    const form = document.querySelector("form");
+    if (form) {
+      if (typeof form.requestSubmit === "function") form.requestSubmit();
+      else form.submit();
+      return { found: true, tag: "FORM", text: "form.submit", score: null };
+    }
+
+    return { found: false };
+  });
+
+  console.log(`  [LOGIN] Submit (${phase}):`, result);
+  await idataLog("login_form", `Submit (${phase}): ${result?.found ? `${result.tag} \"${result.text}\"` : "BULUNAMADI"}`);
+  return result;
+}
+
 async function registerAccount(page, account) {
   console.log(`\n📝 [iDATA] Kayıt başlıyor: ${account.email}`);
 
