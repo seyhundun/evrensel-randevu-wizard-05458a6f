@@ -1242,32 +1242,37 @@ async function loginToIdata(page, account) {
     }
 
     // 4) CAPTCHA çöz ve son text input'a gir
-    const captchaCode = await solveImageCaptcha(page);
-    if (captchaCode) {
-      // CAPTCHA input — captcha image'den sonraki son text input
-      const freshTextInputs = await page.$$('input[type="text"], input[type="email"]');
-      const captchaInput = freshTextInputs[freshTextInputs.length - 1]; // Son text input
-      let captchaTyped = false;
-      if (captchaInput) {
-        console.log(`  [LOGIN] CAPTCHA kodu giriliyor: ${captchaCode}`);
-        captchaTyped = await humanType(page, captchaInput, captchaCode, { minDelay: 140, maxDelay: 300, retries: 2 });
-      }
-
-      if (!captchaInput || !captchaTyped) {
-        console.log(`  [LOGIN] ⚠ CAPTCHA input fallback (evaluate) kullanılıyor`);
-        await page.evaluate((code) => {
-          const inputs = Array.from(document.querySelectorAll('input[type="text"]'));
-          const last = inputs[inputs.length - 1];
-          if (last) {
-            last.focus();
-            last.value = code;
-            last.dispatchEvent(new Event("input", { bubbles: true }));
-            last.dispatchEvent(new Event("change", { bubbles: true }));
-          }
-        }, captchaCode);
-      }
-      await delay(700, 1200);
+    const captchaCode = await solveImageCaptcha(page, { maxAttempts: 3 });
+    if (!captchaCode) {
+      console.log("  [LOGIN] ❌ CAPTCHA çözülemedi, giriş denenmeyecek (10 sn bekleme)");
+      const failShot = await takeScreenshotBase64(page);
+      await delay(9000, 12000);
+      return { success: false, reason: "captcha_failed", screenshot: failShot };
     }
+
+    // CAPTCHA input — captcha image'den sonraki son text input
+    const freshTextInputs = await page.$$('input[type="text"], input[type="email"]');
+    const captchaInput = freshTextInputs[freshTextInputs.length - 1]; // Son text input
+    let captchaTyped = false;
+    if (captchaInput) {
+      console.log(`  [LOGIN] CAPTCHA kodu giriliyor: ${captchaCode}`);
+      captchaTyped = await humanType(page, captchaInput, captchaCode, { minDelay: 140, maxDelay: 300, retries: 2 });
+    }
+
+    if (!captchaInput || !captchaTyped) {
+      console.log(`  [LOGIN] ⚠ CAPTCHA input fallback (evaluate) kullanılıyor`);
+      await page.evaluate((code) => {
+        const inputs = Array.from(document.querySelectorAll('input[type="text"]'));
+        const last = inputs[inputs.length - 1];
+        if (last) {
+          last.focus();
+          last.value = code;
+          last.dispatchEvent(new Event("input", { bubbles: true }));
+          last.dispatchEvent(new Event("change", { bubbles: true }));
+        }
+      }, captchaCode);
+    }
+    await delay(900, 1400);
 
     // Giriş butonu
     await page.evaluate(() => {
