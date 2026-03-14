@@ -1650,11 +1650,25 @@ async function loginToIdata(page, account) {
       return { success: false, reason: "captcha_failed", screenshot: failShot };
     }
 
-    // CAPTCHA input — "Doğrulama Kodu" placeholder'lı input (iDATA'ya özel)
-    let captchaInput = null;
+    // CAPTCHA input — önce pre-detect edilen alanı dene, olmazsa DOM'da yeniden ara
+    let captchaInput = preDetectedCaptchaInput;
     let captchaTyped = false;
 
-    captchaInput = await page.evaluateHandle(() => {
+    if (captchaInput) {
+      const inputInfo = await page.evaluate(el => ({
+        placeholder: el?.placeholder || '',
+        name: el?.name || '',
+        id: el?.id || '',
+      }), captchaInput).catch(() => null);
+
+      if (inputInfo) {
+        console.log(`  [LOGIN] CAPTCHA kodu giriliyor (pre-detect): ${captchaCode} → input(placeholder="${inputInfo.placeholder}" name="${inputInfo.name}" id="${inputInfo.id}")`);
+        await idataLog("login_captcha", `CAPTCHA input hedef (pre): placeholder="${inputInfo.placeholder}" name="${inputInfo.name}" id="${inputInfo.id}"`);
+        captchaTyped = await humanType(page, captchaInput, captchaCode, { minDelay: 140, maxDelay: 300, retries: 2 });
+      }
+    }
+
+    if (!captchaTyped) captchaInput = await page.evaluateHandle(() => {
       // Tüm görünür text-like input'ları topla (type attribute olmayan input'lar dahil)
       const allInputs = Array.from(document.querySelectorAll('input')).filter(inp => {
         const t = (inp.type || 'text').toLowerCase();
