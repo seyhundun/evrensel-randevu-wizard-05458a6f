@@ -11,8 +11,8 @@ require("dotenv").config();
 const PROXY_MODE = (process.env.PROXY_MODE || "residential").toLowerCase();
 let EVOMI_PROXY_HOST = process.env.EVOMI_PROXY_HOST || "core-residential.evomi-proxy.com";
 let EVOMI_PROXY_PORT = Number(process.env.EVOMI_PROXY_PORT || 1000);
-const EVOMI_PROXY_USER = process.env.EVOMI_PROXY_USER || "";
-const EVOMI_PROXY_PASS = process.env.EVOMI_PROXY_PASS || "";
+let EVOMI_PROXY_USER = process.env.EVOMI_PROXY_USER || "";
+let EVOMI_PROXY_PASS = process.env.EVOMI_PROXY_PASS || "";
 let EVOMI_PROXY_COUNTRY = process.env.EVOMI_PROXY_COUNTRY || "TR";
 let EVOMI_PROXY_REGION = process.env.EVOMI_PROXY_REGION || "";
 
@@ -36,7 +36,12 @@ async function loadProxySettingsFromDB() {
       if (map.proxy_host) EVOMI_PROXY_HOST = map.proxy_host;
       if (map.proxy_port) EVOMI_PROXY_PORT = Number(map.proxy_port);
       if (map.proxy_region !== undefined) EVOMI_PROXY_REGION = map.proxy_region;
-      console.log(`  [DB] ✅ Proxy ayarları DB'den yüklendi: ${EVOMI_PROXY_HOST}:${EVOMI_PROXY_PORT} ülke=${EVOMI_PROXY_COUNTRY} bölge=${EVOMI_PROXY_REGION || 'yok'}`);
+      if (map.proxy_user) EVOMI_PROXY_USER = map.proxy_user;
+      if (map.proxy_pass) EVOMI_PROXY_PASS = map.proxy_pass;
+      if (map.captcha_provider) CAPTCHA_PROVIDER = map.captcha_provider.toLowerCase();
+      if (map.capsolver_api_key) CAPSOLVER_API_KEY = map.capsolver_api_key;
+      if (map.captcha_api_key) { CAPTCHA_API_KEY_2 = map.captcha_api_key; CONFIG.CAPTCHA_API_KEY = map.captcha_api_key; }
+      console.log(`  [DB] ✅ Ayarlar DB'den yüklendi: proxy=${EVOMI_PROXY_HOST}:${EVOMI_PROXY_PORT} ülke=${EVOMI_PROXY_COUNTRY} bölge=${EVOMI_PROXY_REGION || 'yok'} captcha=${CAPTCHA_PROVIDER}`);
     }
   } catch (e) {
     console.warn(`  [DB] ⚠️ DB'den proxy ayarı okunamadı, .env kullanılıyor: ${e.message}`);
@@ -159,8 +164,9 @@ try {
 
 // ==================== CAPTCHA PROVIDER ====================
 // CAPTCHA_PROVIDER: "capsolver" | "2captcha" | "auto" (auto = capsolver önce, 2captcha fallback)
-const CAPTCHA_PROVIDER = (process.env.CAPTCHA_PROVIDER || "auto").toLowerCase();
-const CAPSOLVER_API_KEY = (process.env.CAPSOLVER_API_KEY || "").trim();
+let CAPTCHA_PROVIDER = (process.env.CAPTCHA_PROVIDER || "auto").toLowerCase();
+let CAPSOLVER_API_KEY = (process.env.CAPSOLVER_API_KEY || "").trim();
+let CAPTCHA_API_KEY_2 = (process.env.CAPTCHA_API_KEY || process.env.TWOCAPTCHA_API_KEY || "").trim();
 
 console.log(`🔐 CAPTCHA Provider: ${CAPTCHA_PROVIDER}`);
 if (CAPSOLVER_API_KEY) console.log(`🔐 Capsolver API key: var (${CAPSOLVER_API_KEY.length} karakter)`);
