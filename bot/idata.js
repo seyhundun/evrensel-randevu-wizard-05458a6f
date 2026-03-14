@@ -579,17 +579,13 @@ function getResidentialProxyUrl() {
 async function launchBrowser(ip = null) {
   const { connect } = require("puppeteer-real-browser");
 
+  // VFS botuyla aynı minimal args — CF parmak izi tespitini azaltır
   const args = [
     "--no-sandbox",
     "--disable-setuid-sandbox",
-    "--disable-blink-features=AutomationControlled",
-    "--disable-web-security",
-    "--lang=tr-TR",
-    "--use-gl=swiftshader",
-    "--enable-unsafe-swiftshader",
-    "--enable-webgl",
-    "--start-maximized",
+    "--disable-dev-shm-usage",
     "--window-size=1920,1080",
+    "--start-maximized",
   ];
 
   let proxyConfig = undefined;
@@ -611,62 +607,24 @@ async function launchBrowser(ip = null) {
     console.log(`  [BROWSER] Proxy: socks5://127.0.0.1:${port} (${ip})`);
   }
 
-  const ua = getRandomItem(USER_AGENTS);
-  const vp = getRandomItem(VIEWPORTS);
 
   const connectOptions = {
     headless: false,
     args,
     turnstile: true,
     disableXvfb: true,
-    fingerprint: true,
-    connectOption: { defaultViewport: vp },
   };
   if (proxyConfig) {
     connectOptions.proxy = proxyConfig;
   }
 
   const { browser, page } = await connect(connectOptions);
-  console.log(`  [BROWSER] ✅ Tarayıcı başlatıldı (proxy auth: ${proxyConfig ? 'connect() ile' : 'yok'})`);
-
-  // ===== ANTI-DETECTION STEALTH =====
-  await page.evaluateOnNewDocument(() => {
-    // webdriver flag
-    Object.defineProperty(navigator, "webdriver", { get: () => false });
-    // Chrome runtime mock
-    if (!window.chrome) window.chrome = {};
-    if (!window.chrome.runtime) window.chrome.runtime = { connect: () => {}, sendMessage: () => {}, id: "mhjfbmdgcfjbbpaeojofohoefgiehjai" };
-    // Permissions API
-    const origQuery = window.navigator.permissions?.query;
-    if (origQuery) {
-      window.navigator.permissions.query = (params) => {
-        if (params.name === "notifications") return Promise.resolve({ state: Notification.permission });
-        return origQuery(params);
-      };
-    }
-    // Plugins mock
-    Object.defineProperty(navigator, "plugins", {
-      get: () => {
-        const p = [
-          { name: "Chrome PDF Plugin", filename: "internal-pdf-viewer", description: "Portable Document Format" },
-          { name: "Chrome PDF Viewer", filename: "mhjfbmdgcfjbbpaeojofohoefgiehjai", description: "" },
-          { name: "Native Client", filename: "internal-nacl-plugin", description: "" },
-        ];
-        p.item = (i) => p[i]; p.namedItem = (n) => p.find(x => x.name === n); p.refresh = () => {};
-        return p;
-      }
-    });
-    Object.defineProperty(navigator, "mimeTypes", {
-      get: () => {
-        const m = [{ type: "application/pdf", suffixes: "pdf", description: "Portable Document Format" }];
-        m.item = (i) => m[i]; m.namedItem = (n) => m.find(x => x.type === n);
-        return m;
-      }
-    });
-  });
-
-  await page.setUserAgent(ua);
-  await page.setViewport(vp);
+  await page.setViewport({ width: 1920, height: 1080 });
+  
+  const proxyInfo = PROXY_ENABLED 
+    ? (PROXY_MODE === "residential" ? "(residential proxy)" : (ip ? `(IP: ${ip})` : "(proxy yok)"))
+    : "(proxy kapalı)";
+  console.log(`  [BROWSER] ✅ Tarayıcı başlatıldı ${proxyInfo}`);
 
   // Cookie banner'ı kapat
   page.on("dialog", async (d) => { try { await d.accept(); } catch {} });
@@ -994,7 +952,7 @@ async function loginToIdata(page, account) {
     await page.goto(CONFIG.LOGIN_URL, { waitUntil: "networkidle2", timeout: 60000 });
     await delay(3000, 5000);
 
-    const cfAtLoginOpen = await waitCloudflareBypass(page, "login açılışı", 35000);
+    const cfAtLoginOpen = await waitCloudflareBypass(page, "login açılışı", 60000);
     if (!cfAtLoginOpen.ok) {
       return { success: false, reason: cfAtLoginOpen.reason, screenshot: cfAtLoginOpen.screenshot };
     }
