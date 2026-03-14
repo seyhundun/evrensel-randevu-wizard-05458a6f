@@ -40,6 +40,7 @@ const App = () => (
           <Route path="/login" element={<LoginPage />} />
           <Route path="/" element={<ProtectedRoute><Index /></ProtectedRoute>} />
           <Route path="/idata" element={<ProtectedRoute><IdataPage /></ProtectedRoute>} />
+          <Route path="/guide" element={<ProtectedRoute><GuidePage /></ProtectedRoute>} />
           <Route path="*" element={<NotFound />} />
         </Routes>
       </BrowserRouter>
