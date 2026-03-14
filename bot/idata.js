@@ -514,7 +514,8 @@ function isLikelyCaptchaCode(raw) {
 }
 
 async function getCaptchaImageBase64(page) {
-  return await page.evaluate(() => {
+  // 1) Sayfadaki CAPTCHA img elementini bul
+  const imgHandle = await page.evaluateHandle(() => {
     const keywordRegex = /(captcha|doğrulama|dogrulama|verification|security|code)/i;
     const denyRegex = /(logo|icon|brand|header|footer|idata|svg)/i;
 
@@ -522,87 +523,79 @@ async function getCaptchaImageBase64(page) {
     const captchaInputRects = inputs
       .filter((input) => {
         const meta = [
-          input.name,
-          input.id,
-          input.placeholder,
+          input.name, input.id, input.placeholder,
           input.getAttribute("aria-label"),
           input.closest("label")?.textContent,
           input.closest("div, fieldset, section, form")?.textContent,
-        ]
-          .filter(Boolean)
-          .join(" ")
-          .toLowerCase();
+        ].filter(Boolean).join(" ").toLowerCase();
         return keywordRegex.test(meta) && input.type !== "hidden";
       })
       .map((input) => input.getBoundingClientRect())
       .filter((rect) => rect.width > 0 && rect.height > 0);
 
     const images = Array.from(document.querySelectorAll("img"));
-    const scored = images
-      .map((img) => {
-        const src = (img.getAttribute("src") || "").toLowerCase();
-        const alt = (img.getAttribute("alt") || "").toLowerCase();
-        const cls = (img.className || "").toLowerCase();
-        const id = (img.id || "").toLowerCase();
-        const parentText = (img.closest("div, fieldset, section, form")?.textContent || "").toLowerCase();
-        const meta = `${src} ${alt} ${cls} ${id} ${parentText}`;
+    const scored = images.map((img) => {
+      const src = (img.getAttribute("src") || "").toLowerCase();
+      const alt = (img.getAttribute("alt") || "").toLowerCase();
+      const cls = (img.className || "").toLowerCase();
+      const id = (img.id || "").toLowerCase();
+      const parentText = (img.closest("div, fieldset, section, form")?.textContent || "").toLowerCase();
+      const meta = `${src} ${alt} ${cls} ${id} ${parentText}`;
+      const rect = img.getBoundingClientRect();
+      const width = img.naturalWidth || rect.width || img.width || 0;
+      const height = img.naturalHeight || rect.height || img.height || 0;
 
-        const rect = img.getBoundingClientRect();
-        const width = img.naturalWidth || rect.width || img.width || 0;
-        const height = img.naturalHeight || rect.height || img.height || 0;
+      let score = 0;
+      if (keywordRegex.test(meta)) score += 60;
+      if (denyRegex.test(meta)) score -= 80;
+      if (width >= 70 && width <= 260 && height >= 24 && height <= 110) score += 20;
+      else score -= 15;
+      if (src.includes("captcha") || src.includes("verify") || src.includes("dogrulama")) score += 30;
+      if (src.startsWith("data:image/svg")) score -= 50;
 
-        let score = 0;
+      if (captchaInputRects.length > 0) {
+        const cx = rect.left + rect.width / 2;
+        const cy = rect.top + rect.height / 2;
+        const minDistance = Math.min(
+          ...captchaInputRects.map((r) => {
+            const ix = r.left + r.width / 2;
+            const iy = r.top + r.height / 2;
+            return Math.hypot(cx - ix, cy - iy);
+          })
+        );
+        if (minDistance < 220) score += 35;
+        else if (minDistance < 400) score += 20;
+        else score -= 10;
+      }
 
-        if (keywordRegex.test(meta)) score += 60;
-        if (denyRegex.test(meta)) score -= 80;
-
-        if (width >= 70 && width <= 260 && height >= 24 && height <= 110) score += 20;
-        else score -= 15;
-
-        if (src.includes("captcha") || src.includes("verify") || src.includes("dogrulama")) score += 30;
-        if (src.startsWith("data:image/svg")) score -= 50;
-
-        if (captchaInputRects.length > 0) {
-          const cx = rect.left + rect.width / 2;
-          const cy = rect.top + rect.height / 2;
-          const minDistance = Math.min(
-            ...captchaInputRects.map((r) => {
-              const ix = r.left + r.width / 2;
-              const iy = r.top + r.height / 2;
-              return Math.hypot(cx - ix, cy - iy);
-            })
-          );
-
-          if (minDistance < 220) score += 35;
-          else if (minDistance < 400) score += 20;
-          else score -= 10;
-        }
-
-        return { img, score, src, width, height };
-      })
-      .sort((a, b) => b.score - a.score);
+      return { img, score, src, width, height };
+    }).sort((a, b) => b.score - a.score);
 
     const best = scored[0];
-    if (!best || best.score < 25) {
-      return { base64: null, reason: `captcha_img_not_found(score=${best?.score ?? "none"})` };
-    }
-
-    try {
-      const canvas = document.createElement("canvas");
-      canvas.width = best.width;
-      canvas.height = best.height;
-      const ctx = canvas.getContext("2d");
-      if (!ctx) return { base64: null, reason: "canvas_ctx_null" };
-      ctx.drawImage(best.img, 0, 0, best.width, best.height);
-      const dataUrl = canvas.toDataURL("image/png");
-      return {
-        base64: dataUrl.split(",")[1],
-        meta: { score: best.score, src: best.src, width: best.width, height: best.height },
-      };
-    } catch (err) {
-      return { base64: null, reason: `canvas_error:${err.message || err}` };
-    }
+    if (!best || best.score < 25) return null;
+    return best.img;
   });
+
+  // 2) Element bulunamadıysa
+  const element = imgHandle.asElement();
+  if (!element) {
+    return { base64: null, reason: "captcha_img_not_found" };
+  }
+
+  // 3) Puppeteer element screenshot — cross-origin sorununu atlar
+  try {
+    const screenshotBuffer = await element.screenshot({ encoding: "base64" });
+    const meta = await page.evaluate((el) => {
+      const src = (el.getAttribute("src") || "").toLowerCase();
+      const w = el.naturalWidth || el.width || 0;
+      const h = el.naturalHeight || el.height || 0;
+      return { src, width: w, height: h, score: 999 };
+    }, element);
+    return { base64: screenshotBuffer, meta };
+  } catch (err) {
+    console.log(`  [CAPTCHA] Element screenshot hatası: ${err.message}`);
+    return { base64: null, reason: `screenshot_error:${err.message}` };
+  }
 }
 
 async function refreshCaptchaImage(page) {
