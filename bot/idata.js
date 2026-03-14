@@ -1185,14 +1185,14 @@ async function loginToIdata(page, account) {
       // CAPTCHA input — captcha image'den sonraki son text input
       const freshTextInputs = await page.$$('input[type="text"], input[type="email"]');
       const captchaInput = freshTextInputs[freshTextInputs.length - 1]; // Son text input
+      let captchaTyped = false;
       if (captchaInput) {
         console.log(`  [LOGIN] CAPTCHA kodu giriliyor: ${captchaCode}`);
-        const typed = await humanType(page, captchaInput, captchaCode, { minDelay: 140, maxDelay: 300, retries: 2 });
-        if (!typed) console.log("  [LOGIN] ⚠ CAPTCHA input tam dolmadı, evaluate fallback deneniyor");
+        captchaTyped = await humanType(page, captchaInput, captchaCode, { minDelay: 140, maxDelay: 300, retries: 2 });
       }
 
-      if (!captchaInput) {
-        console.log(`  [LOGIN] ⚠ CAPTCHA input bulunamadı, evaluate ile deneniyor`);
+      if (!captchaInput || !captchaTyped) {
+        console.log(`  [LOGIN] ⚠ CAPTCHA input fallback (evaluate) kullanılıyor`);
         await page.evaluate((code) => {
           const inputs = Array.from(document.querySelectorAll('input[type="text"]'));
           const last = inputs[inputs.length - 1];
