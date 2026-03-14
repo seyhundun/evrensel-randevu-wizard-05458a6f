@@ -117,6 +117,7 @@ export function useTracking() {
       country,
       city,
       visa_category: visaCategory || null,
+      visa_subcategory: visaSubcategory || null,
       person_count: personCount,
       check_interval: interval,
       keep_alive: keepAlive,
