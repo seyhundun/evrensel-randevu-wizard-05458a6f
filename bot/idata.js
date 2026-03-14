@@ -1947,8 +1947,26 @@ async function loginToIdata(page, account) {
       return { success: true };
     }
 
+    // Hâlâ login sayfasındaysa submit bir kez daha zorla (bazı akışlarda ilk tıklama düşüyor)
+    if (stillLogin) {
+      await idataLog("login_form", "Hâlâ login ekranında — submit retry tetiklendi");
+      const retrySubmit = await clickAuthSubmitButton(page, "son_retry");
+      if (retrySubmit?.found) {
+        await delay(4000, 7000);
+        const retryState = await readPageState(page);
+        const retryStillLogin = retryState.url.includes("/membership/login") || retryState.body.includes("giriş yap");
+        const retryLoggedIn = !retryState.isCloudflare && !retryStillLogin &&
+          ((retryState.url.includes("/membership") && !retryState.url.includes("/membership/login")) || retryState.body.includes("çıkış") || retryState.body.includes("logout"));
+        if (retryLoggedIn) {
+          console.log("  [LOGIN] ✅ Giriş başarılı (submit retry)!");
+          return { success: true };
+        }
+      }
+    }
+
     console.log("  [LOGIN] ❌ Giriş başarısız");
     const ss = await takeScreenshotBase64(page);
+    await delay(9000, 12000); // hemen kapanmasın, ekranda kontrol için kısa bekleme
     return { success: false, reason: "login_failed", screenshot: ss };
 
   } catch (err) {
