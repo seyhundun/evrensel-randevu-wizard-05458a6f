@@ -28,6 +28,21 @@ console.log(`🔐 CAPTCHA Provider: ${CAPTCHA_PROVIDER}`);
 console.log(`🔐 2captcha API key: ${CONFIG.CAPTCHA_API_KEY ? `var (${CONFIG.CAPTCHA_API_KEY.length} karakter)` : "yok"}`);
 if (CAPSOLVER_API_KEY) console.log(`🔐 Capsolver API key: var (${CAPSOLVER_API_KEY.length} karakter)`);
 
+// ==================== PROXY CONFIG ====================
+const PROXY_MODE = (process.env.PROXY_MODE || "datacenter").toLowerCase();
+const EVOMI_PROXY_HOST = process.env.EVOMI_PROXY_HOST || "rp.evomi.com";
+const EVOMI_PROXY_PORT = Number(process.env.EVOMI_PROXY_PORT || 1000);
+const EVOMI_PROXY_USER = process.env.EVOMI_PROXY_USER || "";
+const EVOMI_PROXY_PASS = process.env.EVOMI_PROXY_PASS || "";
+const EVOMI_PROXY_COUNTRY = process.env.EVOMI_PROXY_COUNTRY || "TR";
+let residentialSessionId = 0;
+
+if (PROXY_MODE === "residential") {
+  console.log(`🌐 Proxy: RESIDENTIAL (${EVOMI_PROXY_HOST}:${EVOMI_PROXY_PORT})`);
+} else {
+  console.log(`🌐 Proxy: DATACENTER (microsocks SOCKS5)`);
+}
+
 // ==================== IP ROTATION ====================
 const IP_LIST = (process.env.IP_LIST || "").split(",").map(s => s.trim()).filter(Boolean);
 let currentIpIndex = -1;
@@ -488,6 +503,14 @@ async function solveImageCaptcha(page) {
 }
 
 // ==================== BROWSER LAUNCH ====================
+function getResidentialProxyUrl() {
+  residentialSessionId++;
+  const sessionPart = `session-${EVOMI_PROXY_COUNTRY.toLowerCase()}_${residentialSessionId}_${Date.now()}`;
+  const user = `${EVOMI_PROXY_USER}-country-${EVOMI_PROXY_COUNTRY.toLowerCase()}-session-${sessionPart}`;
+  console.log(`  [PROXY] 🏠 Residential: ${EVOMI_PROXY_HOST}:${EVOMI_PROXY_PORT} (session: ${sessionPart})`);
+  return { user, pass: EVOMI_PROXY_PASS, host: EVOMI_PROXY_HOST, port: EVOMI_PROXY_PORT };
+}
+
 async function launchBrowser(ip = null) {
   const { connect } = require("puppeteer-real-browser");
 
@@ -499,7 +522,13 @@ async function launchBrowser(ip = null) {
     "--lang=tr-TR",
   ];
 
-  if (ip) {
+  let proxyAuth = null;
+
+  if (PROXY_MODE === "residential" && EVOMI_PROXY_USER) {
+    const rp = getResidentialProxyUrl();
+    args.push(`--proxy-server=http://${rp.host}:${rp.port}`);
+    proxyAuth = { username: rp.user, password: rp.pass };
+  } else if (ip) {
     const port = 10800 + IP_LIST.indexOf(ip);
     args.push(`--proxy-server=socks5://127.0.0.1:${port}`);
     console.log(`  [BROWSER] Proxy: socks5://127.0.0.1:${port} (${ip})`);
@@ -511,10 +540,15 @@ async function launchBrowser(ip = null) {
   const { browser, page } = await connect({
     headless: false,
     args,
-    turnstile: true, // iData Cloudflare Turnstile kullanıyor
+    turnstile: true,
     fingerprint: true,
     connectOption: { defaultViewport: vp },
   });
+
+  if (proxyAuth) {
+    await page.authenticate(proxyAuth);
+    console.log(`  [BROWSER] 🔑 Residential proxy auth uygulandı`);
+  }
 
   await page.setUserAgent(ua);
   await page.setViewport(vp);

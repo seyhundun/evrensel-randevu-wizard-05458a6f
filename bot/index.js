@@ -1,18 +1,37 @@
 /**
- * VFS Global Randevu Takip Botu v7.1
+ * VFS Global Randevu Takip Botu v8.1
  * puppeteer-real-browser + Fingerprint + Kayıt Otomasyonu
- * IP Rotasyonu + Fingerprint + Kayıt Otomasyonu
+ * IP Rotasyonu + Residential Proxy + Kayıt Otomasyonu
  */
 
 require("dotenv").config();
 
+// ==================== PROXY CONFIG ====================
+// Proxy modu: "datacenter" (varsayılan, microsocks SOCKS5) veya "residential" (Evomi HTTP)
+const PROXY_MODE = (process.env.PROXY_MODE || "datacenter").toLowerCase();
+const EVOMI_PROXY_HOST = process.env.EVOMI_PROXY_HOST || "rp.evomi.com";
+const EVOMI_PROXY_PORT = Number(process.env.EVOMI_PROXY_PORT || 1000);
+const EVOMI_PROXY_USER = process.env.EVOMI_PROXY_USER || "";
+const EVOMI_PROXY_PASS = process.env.EVOMI_PROXY_PASS || "";
+const EVOMI_PROXY_COUNTRY = process.env.EVOMI_PROXY_COUNTRY || "TR"; // Ülke kodu (TR, PL, DE vb.)
+
+if (PROXY_MODE === "residential") {
+  console.log(`🌐 Proxy modu: RESIDENTIAL (Evomi)`);
+  console.log(`   Host: ${EVOMI_PROXY_HOST}:${EVOMI_PROXY_PORT}`);
+  console.log(`   Kullanıcı: ${EVOMI_PROXY_USER ? "var" : "yok"}`);
+  console.log(`   Ülke: ${EVOMI_PROXY_COUNTRY}`);
+} else {
+  console.log(`🌐 Proxy modu: DATACENTER (microsocks SOCKS5)`);
+}
+
 // ==================== IP ROTATION ====================
 const IP_LIST = (process.env.IP_LIST || "").split(",").map(s => s.trim()).filter(Boolean);
 let currentIpIndex = -1;
-let ipFailCounts = new Map(); // IP başına hata sayısı
-const IP_MAX_FAILS = 3; // Bu kadar ardışık hatadan sonra IP'yi atla
-const IP_BAN_DURATION_MS = Number(process.env.IP_BAN_DURATION_MS || 1800000); // 30 dk ban
-let ipBannedUntil = new Map(); // IP ban süreleri
+let ipFailCounts = new Map();
+const IP_MAX_FAILS = 3;
+const IP_BAN_DURATION_MS = Number(process.env.IP_BAN_DURATION_MS || 1800000);
+let ipBannedUntil = new Map();
+let residentialSessionId = 0; // Evomi oturum rotasyonu için
 
 function getNextIp() {
   if (IP_LIST.length === 0) return null;
@@ -1414,6 +1433,16 @@ function cleanupUserDataDir(dir) {
   }
 }
 
+function getResidentialProxyUrl() {
+  // Her çağrıda yeni session ID = yeni IP
+  residentialSessionId++;
+  const sessionPart = `session-${EVOMI_PROXY_COUNTRY.toLowerCase()}_${residentialSessionId}_${Date.now()}`;
+  const user = `${EVOMI_PROXY_USER}-country-${EVOMI_PROXY_COUNTRY.toLowerCase()}-session-${sessionPart}`;
+  const proxyUrl = `http://${user}:${EVOMI_PROXY_PASS}@${EVOMI_PROXY_HOST}:${EVOMI_PROXY_PORT}`;
+  console.log(`  [PROXY] 🏠 Residential proxy: ${EVOMI_PROXY_HOST}:${EVOMI_PROXY_PORT} (session: ${sessionPart})`);
+  return { proxyUrl, user, pass: EVOMI_PROXY_PASS, host: EVOMI_PROXY_HOST, port: EVOMI_PROXY_PORT };
+}
+
 async function launchBrowser(proxyIp = null) {
   const { connect } = require("puppeteer-real-browser");
   const userDataDir = createTempUserDataDir();
@@ -1426,8 +1455,15 @@ async function launchBrowser(proxyIp = null) {
     `--user-data-dir=${userDataDir}`,
   ];
   
-  // IP rotasyonu: her IP için local SOCKS5 proxy kullan
-  if (proxyIp) {
+  let proxyAuth = null;
+
+  if (PROXY_MODE === "residential" && EVOMI_PROXY_USER) {
+    // Evomi residential proxy (HTTP authenticated)
+    const rp = getResidentialProxyUrl();
+    args.push(`--proxy-server=http://${rp.host}:${rp.port}`);
+    proxyAuth = { username: rp.user, password: rp.pass };
+  } else if (proxyIp) {
+    // Datacenter microsocks SOCKS5 proxy
     const proxyPort = 10800 + IP_LIST.indexOf(proxyIp);
     args.push(`--proxy-server=socks5://127.0.0.1:${proxyPort}`);
     console.log(`  [BROWSER] 🌐 Proxy: socks5://127.0.0.1:${proxyPort} (IP: ${proxyIp})`);
@@ -1438,10 +1474,19 @@ async function launchBrowser(proxyIp = null) {
     args,
   });
   
+  // Residential proxy auth
+  if (proxyAuth) {
+    await page.authenticate(proxyAuth);
+    console.log(`  [BROWSER] 🔑 Residential proxy auth uygulandı`);
+  }
+
   // Tarayıcı kapanınca temp klasörü sil
   browser.on("disconnected", () => cleanupUserDataDir(userDataDir));
   
-  console.log(`  [BROWSER] ✅ Real browser başlatıldı (temiz profil) ${proxyIp ? `(IP: ${proxyIp})` : "(proxy yok)"}`);
+  const proxyInfo = PROXY_MODE === "residential" 
+    ? "(residential proxy)" 
+    : (proxyIp ? `(IP: ${proxyIp})` : "(proxy yok)");
+  console.log(`  [BROWSER] ✅ Real browser başlatıldı (temiz profil) ${proxyInfo}`);
   return { browser, page };
 }
 
