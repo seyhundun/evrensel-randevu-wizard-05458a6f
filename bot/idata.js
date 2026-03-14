@@ -985,7 +985,7 @@ async function solveImageCaptcha(page, options = {}) {
               type: "ImageToTextTask",
               body: captchaImgBase64,
               case: false,
-              numeric: 1,
+              numeric: 0,
               minLength: 4,
               maxLength: 6,
             },
