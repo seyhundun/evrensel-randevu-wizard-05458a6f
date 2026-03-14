@@ -7,6 +7,8 @@
 require("dotenv").config();
 
 // ==================== PROXY CONFIG ====================
+// Proxy açık/kapalı (dashboard'dan kontrol edilir)
+let PROXY_ENABLED = true;
 // Proxy modu: "datacenter" (varsayılan, microsocks SOCKS5) veya "residential" (Evomi HTTP)
 const PROXY_MODE = (process.env.PROXY_MODE || "residential").toLowerCase();
 let EVOMI_PROXY_HOST = process.env.EVOMI_PROXY_HOST || "core-residential.evomi-proxy.com";
@@ -32,6 +34,7 @@ async function loadProxySettingsFromDB() {
     const settings = await res.json();
     if (Array.isArray(settings)) {
       const map = Object.fromEntries(settings.map(s => [s.key, s.value]));
+      if (map.proxy_enabled !== undefined) PROXY_ENABLED = map.proxy_enabled !== "false";
       if (map.proxy_country) EVOMI_PROXY_COUNTRY = map.proxy_country;
       if (map.proxy_host) EVOMI_PROXY_HOST = map.proxy_host;
       if (map.proxy_port) EVOMI_PROXY_PORT = Number(map.proxy_port);
@@ -42,7 +45,7 @@ async function loadProxySettingsFromDB() {
       if (map.capsolver_api_key) CAPSOLVER_API_KEY = map.capsolver_api_key;
       if (map.captcha_api_key) { CAPTCHA_API_KEY_2 = map.captcha_api_key; CONFIG.CAPTCHA_API_KEY = map.captcha_api_key; }
       if (map.ip_rotation_interval) IP_ROTATION_INTERVAL_MS = Number(map.ip_rotation_interval) * 60 * 1000;
-      console.log(`  [DB] ✅ Ayarlar DB'den yüklendi: proxy=${EVOMI_PROXY_HOST}:${EVOMI_PROXY_PORT} ülke=${EVOMI_PROXY_COUNTRY} bölge=${EVOMI_PROXY_REGION || 'yok'} captcha=${CAPTCHA_PROVIDER} ip_rot=${IP_ROTATION_INTERVAL_MS/60000}dk`);
+      console.log(`  [DB] ✅ Ayarlar DB'den yüklendi: proxy_enabled=${PROXY_ENABLED} proxy=${EVOMI_PROXY_HOST}:${EVOMI_PROXY_PORT} ülke=${EVOMI_PROXY_COUNTRY} bölge=${EVOMI_PROXY_REGION || 'yok'} captcha=${CAPTCHA_PROVIDER} ip_rot=${IP_ROTATION_INTERVAL_MS/60000}dk`);
     }
   } catch (e) {
     console.warn(`  [DB] ⚠️ DB'den proxy ayarı okunamadı, .env kullanılıyor: ${e.message}`);
@@ -1550,7 +1553,9 @@ async function launchBrowser(proxyIp = null) {
   
   let proxyConfig = undefined;
 
-  if (PROXY_MODE === "residential" && EVOMI_PROXY_USER) {
+  if (!PROXY_ENABLED) {
+    console.log(`  [BROWSER] 🔵 Proxy KAPALI — sunucu kendi IP'si ile çıkıyor`);
+  } else if (PROXY_MODE === "residential" && EVOMI_PROXY_USER) {
     // Evomi residential proxy - connect() proxy parametresi ile auth popup'ı önle
     const rp = getResidentialProxyUrl();
     proxyConfig = {
