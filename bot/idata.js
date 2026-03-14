@@ -1844,12 +1844,20 @@ async function mainLoop() {
             } else {
               const reason = loginResult.reason ? ` | Sebep: ${loginResult.reason}` : "";
               await idataLog("login_fail", `Giriş başarısız: ${account.email}${reason}`, loginResult.screenshot);
+
               if (ip && ["cloudflare_queue", "cloudflare_challenge"].includes(loginResult.reason)) {
                 markIpBanned(ip);
                 continue; // CF engeli — sonraki IP
               }
+
+              if (["captcha_failed", "captcha_invalid"].includes(loginResult.reason)) {
+                allCfBlocked = false;
+                console.log(`  [LOGIN] 🔁 CAPTCHA sebebiyle yeniden denenecek (${attempt}/3)`);
+                if (attempt < 3) continue;
+              }
+
               allCfBlocked = false;
-              success = true; // CF dışı hata
+              success = true; // CF dışı ve retry kapsamı dışı hata
             }
           } catch (err) {
             await idataLog("error", `Hata: ${err.message} | IP: ${getProxyLabel(ip)} | Deneme: ${attempt}`);
