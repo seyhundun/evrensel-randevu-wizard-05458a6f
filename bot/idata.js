@@ -549,7 +549,9 @@ async function getCaptchaImageBase64(page) {
       let score = 0;
       if (keywordRegex.test(meta)) score += 60;
       if (denyRegex.test(meta)) score -= 80;
-      if (width >= 70 && width <= 260 && height >= 24 && height <= 110) score += 20;
+
+      // iDATA CAPTCHA boyutları için daha geniş tolerans
+      if (width >= 60 && width <= 420 && height >= 20 && height <= 180) score += 20;
       else score -= 15;
       if (src.includes("captcha") || src.includes("verify") || src.includes("dogrulama")) score += 30;
       if (src.startsWith("data:image/svg")) score -= 50;
