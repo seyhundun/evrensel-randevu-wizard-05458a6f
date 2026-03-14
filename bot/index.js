@@ -1479,6 +1479,9 @@ async function launchBrowser(proxyIp = null) {
     "--disable-blink-features=AutomationControlled",
     "--window-size=1366,768",
     `--user-data-dir=${userDataDir}`,
+    "--use-gl=swiftshader",
+    "--enable-unsafe-swiftshader",
+    "--enable-webgl",
   ];
   
   let proxyAuth = null;
@@ -1498,6 +1501,7 @@ async function launchBrowser(proxyIp = null) {
   const { browser, page } = await connect({
     headless: false,
     args,
+    turnstile: true,
   });
   
   // Residential proxy auth
