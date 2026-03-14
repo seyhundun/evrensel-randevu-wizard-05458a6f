@@ -75,15 +75,16 @@ let currentIpIndex = -1;
 const ipBannedUntil = new Map();
 const IP_BAN_DURATION_MS = Number(process.env.IP_BAN_DURATION_MS || 1800000);
 
-// ==================== PROXY CITY ROTATION ====================
-const PROXY_CITIES = ["ankara", "adana", "konya", "istanbul", "izmir", "bursa", "antalya"];
-let currentCityIndex = -1;
+// ==================== PROXY REGION ROTATION ====================
+const PROXY_REGIONS = ["ankara", "adana", "konya", "istanbul", "izmir", "bursa", "antalya"];
+let currentRegionIndex = -1;
+const PROXY_ISP_LIST = "vodafonenetdslm,turkcellinterne,vodafonenetadsl,superonlinebroa,turktelekom,turktelekomunik,vodafoneturkey,vodafonenetdslk";
 
-function getNextProxyCity() {
-  currentCityIndex = (currentCityIndex + 1) % PROXY_CITIES.length;
-  const city = PROXY_CITIES[currentCityIndex];
-  console.log(`  [PROXY] 🏙 Şehir rotasyonu: ${city} (${currentCityIndex + 1}/${PROXY_CITIES.length})`);
-  return city;
+function getNextProxyRegion() {
+  currentRegionIndex = (currentRegionIndex + 1) % PROXY_REGIONS.length;
+  const region = PROXY_REGIONS[currentRegionIndex];
+  console.log(`  [PROXY] 🏙 Bölge rotasyonu: ${region} (${currentRegionIndex + 1}/${PROXY_REGIONS.length})`);
+  return region;
 }
 
 function getNextIp() {
