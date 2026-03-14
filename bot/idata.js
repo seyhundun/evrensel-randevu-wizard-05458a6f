@@ -186,29 +186,93 @@ const VIEWPORTS = [
 
 function getRandomItem(arr) { return arr[Math.floor(Math.random() * arr.length)]; }
 
-// İnsan benzeri yazma
+function normalizeTypedValue(value) {
+  return String(value ?? "")
+    .toLowerCase()
+    .replace(/\s+/g, "")
+    .replace(/[()\-]/g, "");
+}
+
+function isTypedValueMatch(expected, actual) {
+  const expectedRaw = String(expected ?? "").trim();
+  const actualRaw = String(actual ?? "").trim();
+
+  if (!expectedRaw) return actualRaw.length === 0;
+  if (actualRaw === expectedRaw) return true;
+
+  const expectedNorm = normalizeTypedValue(expectedRaw);
+  const actualNorm = normalizeTypedValue(actualRaw);
+
+  if (actualNorm === expectedNorm) return true;
+
+  // Telefon gibi alanlarda maske/prefix olabilir
+  if (/^\d+$/.test(expectedNorm) && actualNorm.endsWith(expectedNorm)) return true;
+
+  return false;
+}
+
+async function getInputValue(page, element) {
+  return await page.evaluate((el) => {
+    if (!el) return "";
+    if ("value" in el) return el.value || "";
+    return el.textContent || "";
+  }, element);
+}
+
+// İnsan benzeri yazma (yavaş + doğrulamalı)
 async function humanType(page, selector, text, options = {}) {
-  const { minDelay = 120, maxDelay = 350 } = options;
+  const {
+    minDelay = 170,
+    maxDelay = 420,
+    retries = 3,
+    verify = true,
+  } = options;
+
+  const valueToType = String(text ?? "");
   const element = typeof selector === "string" ? await page.$(selector) : selector;
   if (!element) return false;
 
-  await element.click({ clickCount: 1 });
-  await delay(400, 900);
+  for (let attempt = 1; attempt <= retries; attempt++) {
+    try {
+      await element.click({ clickCount: 1 });
+      await delay(200, 450);
 
-  // Temizle
-  await page.keyboard.down("Control");
-  await page.keyboard.press("a");
-  await page.keyboard.up("Control");
-  await page.keyboard.press("Backspace");
-  await delay(200, 500);
+      // Temizle (hem klavye hem DOM)
+      await page.keyboard.down("Control");
+      await page.keyboard.press("a");
+      await page.keyboard.up("Control");
+      await page.keyboard.press("Backspace");
+      await page.evaluate((el) => {
+        if (el && "value" in el) {
+          el.value = "";
+          el.dispatchEvent(new Event("input", { bubbles: true }));
+          el.dispatchEvent(new Event("change", { bubbles: true }));
+        }
+      }, element).catch(() => {});
+      await delay(120, 260);
 
-  for (const ch of String(text)) {
-    const keyDelay = Math.floor(Math.random() * (maxDelay - minDelay + 1)) + minDelay;
-    await page.keyboard.type(ch, { delay: keyDelay });
-    if (Math.random() < 0.15) await delay(300, 800);
+      for (const ch of valueToType) {
+        const keyDelay = Math.floor(Math.random() * (maxDelay - minDelay + 1)) + minDelay;
+        await element.type(ch, { delay: keyDelay });
+        if (Math.random() < 0.2) await delay(120, 320);
+      }
+
+      await delay(220, 500);
+
+      if (!verify) return true;
+
+      const currentValue = await getInputValue(page, element);
+      if (isTypedValueMatch(valueToType, currentValue)) return true;
+
+      console.log(`  [TYPE] ⚠ Alan doğrulama başarısız (deneme ${attempt}/${retries}): beklenen="${valueToType}" okunan="${currentValue}"`);
+      await delay(250, 500);
+    } catch (err) {
+      console.log(`  [TYPE] ⚠ Yazma denemesi başarısız (${attempt}/${retries}): ${err.message}`);
+      await delay(250, 500);
+    }
   }
-  await delay(300, 700);
-  return true;
+
+  return false;
 }
 
 async function humanMove(page) {
@@ -433,46 +497,129 @@ async function clearCfBlocked() {
 }
 
 
+function normalizeCaptchaCode(raw) {
+  return String(raw || "")
+    .replace(/[^a-zA-Z0-9]/g, "")
+    .toUpperCase()
+    .trim();
+}
+
+function isLikelyCaptchaCode(raw) {
+  const code = normalizeCaptchaCode(raw);
+  if (!code) return false;
+  if (code.length < 4 || code.length > 6) return false;
+  if (/^(IDATA|ITALYA|ITALIA|LOGIN|REGISTER|CAPTCHA|KODU)$/i.test(code)) return false;
+  if (/^(.)\1{3,}$/.test(code)) return false;
+  return true;
+}
+
+async function getCaptchaImageBase64(page) {
+  return await page.evaluate(() => {
+    const keywordRegex = /(captcha|doğrulama|dogrulama|verification|security|code)/i;
+    const denyRegex = /(logo|icon|brand|header|footer|idata|svg)/i;
+
+    const inputs = Array.from(document.querySelectorAll("input"));
+    const captchaInputRects = inputs
+      .filter((input) => {
+        const meta = [
+          input.name,
+          input.id,
+          input.placeholder,
+          input.getAttribute("aria-label"),
+          input.closest("label")?.textContent,
+          input.closest("div, fieldset, section, form")?.textContent,
+        ]
+          .filter(Boolean)
+          .join(" ")
+          .toLowerCase();
+        return keywordRegex.test(meta) && input.type !== "hidden";
+      })
+      .map((input) => input.getBoundingClientRect())
+      .filter((rect) => rect.width > 0 && rect.height > 0);
+
+    const images = Array.from(document.querySelectorAll("img"));
+    const scored = images
+      .map((img) => {
+        const src = (img.getAttribute("src") || "").toLowerCase();
+        const alt = (img.getAttribute("alt") || "").toLowerCase();
+        const cls = (img.className || "").toLowerCase();
+        const id = (img.id || "").toLowerCase();
+        const parentText = (img.closest("div, fieldset, section, form")?.textContent || "").toLowerCase();
+        const meta = `${src} ${alt} ${cls} ${id} ${parentText}`;
+
+        const rect = img.getBoundingClientRect();
+        const width = img.naturalWidth || rect.width || img.width || 0;
+        const height = img.naturalHeight || rect.height || img.height || 0;
+
+        let score = 0;
+
+        if (keywordRegex.test(meta)) score += 60;
+        if (denyRegex.test(meta)) score -= 80;
+
+        if (width >= 70 && width <= 260 && height >= 24 && height <= 110) score += 20;
+        else score -= 15;
+
+        if (src.includes("captcha") || src.includes("verify") || src.includes("dogrulama")) score += 30;
+        if (src.startsWith("data:image/svg")) score -= 50;
+
+        if (captchaInputRects.length > 0) {
+          const cx = rect.left + rect.width / 2;
+          const cy = rect.top + rect.height / 2;
+          const minDistance = Math.min(
+            ...captchaInputRects.map((r) => {
+              const ix = r.left + r.width / 2;
+              const iy = r.top + r.height / 2;
+              return Math.hypot(cx - ix, cy - iy);
+            })
+          );
+
+          if (minDistance < 220) score += 35;
+          else if (minDistance < 400) score += 20;
+          else score -= 10;
+        }
+
+        return { img, score, src, width, height };
+      })
+      .sort((a, b) => b.score - a.score);
+
+    const best = scored[0];
+    if (!best || best.score < 25) {
+      return { base64: null, reason: `captcha_img_not_found(score=${best?.score ?? "none"})` };
+    }
+
+    try {
+      const canvas = document.createElement("canvas");
+      canvas.width = best.width;
+      canvas.height = best.height;
+      const ctx = canvas.getContext("2d");
+      if (!ctx) return { base64: null, reason: "canvas_ctx_null" };
+      ctx.drawImage(best.img, 0, 0, best.width, best.height);
+      const dataUrl = canvas.toDataURL("image/png");
+      return {
+        base64: dataUrl.split(",")[1],
+        meta: { score: best.score, src: best.src, width: best.width, height: best.height },
+      };
+    } catch (err) {
+      return { base64: null, reason: `canvas_error:${err.message || err}` };
+    }
+  });
+}
+
 async function solveImageCaptcha(page) {
   // Önce AI ile çöz (Lovable AI - Gemini Vision), başarısızsa 2captcha/capsolver'a düş
-
   try {
-    // Captcha resmini bul
-    const captchaImgBase64 = await page.evaluate(() => {
-      // "Doğrulama kodu" etiketinden sonraki resmi bul
-      const imgs = Array.from(document.querySelectorAll("img"));
-      const captchaImg = imgs.find(img => {
-        const src = img.src || "";
-        const alt = (img.alt || "").toLowerCase();
-        const parent = img.closest("div, fieldset, section");
-        const parentText = (parent?.innerText || "").toLowerCase();
-        return src.includes("captcha") || src.includes("dogrulama") ||
-               src.includes("/code") || src.includes("/image") ||
-               alt.includes("captcha") || alt.includes("doğrulama") ||
-               parentText.includes("doğrulama kodu") ||
-               (img.width > 60 && img.width < 300 && img.height > 20 && img.height < 100);
-      });
-      if (!captchaImg) return null;
-
-      // Canvas ile base64'e çevir
-      const canvas = document.createElement("canvas");
-      canvas.width = captchaImg.naturalWidth || captchaImg.width;
-      canvas.height = captchaImg.naturalHeight || captchaImg.height;
-      const ctx = canvas.getContext("2d");
-      ctx.drawImage(captchaImg, 0, 0);
-      return canvas.toDataURL("image/png").split(",")[1];
-    });
+    const capture = await getCaptchaImageBase64(page);
+    const captchaImgBase64 = capture?.base64;
 
     if (!captchaImgBase64) {
-      console.log("  [CAPTCHA] Captcha resmi bulunamadı!");
+      console.log(`  [CAPTCHA] ❌ Captcha resmi bulunamadı: ${capture?.reason || "unknown"}`);
       return null;
     }
 
-    console.log("  [CAPTCHA] 📸 Captcha resmi bulundu, AI ile çözülüyor...");
+    console.log(`  [CAPTCHA] 📸 Captcha resmi bulundu (score=${capture?.meta?.score ?? "?"}), AI ile çözülüyor...`);
 
     // 1) Lovable AI (Gemini Vision) ile çöz — ücretsiz
     try {
-      const fetch = (await import("node-fetch")).default;
       const aiRes = await fetch(
         "https://ocrpzwrsyiprfuzsyivf.supabase.co/functions/v1/solve-captcha",
         {
@@ -485,11 +632,14 @@ async function solveImageCaptcha(page) {
         }
       );
       const aiData = await aiRes.json();
-      if (aiData.ok && aiData.code) {
-        console.log(`  [CAPTCHA] ✅ AI çözüldü: ${aiData.code} (raw: ${aiData.raw})`);
-        return aiData.code;
+      const aiCode = normalizeCaptchaCode(aiData?.code || aiData?.raw);
+
+      if (aiData.ok && isLikelyCaptchaCode(aiCode)) {
+        console.log(`  [CAPTCHA] ✅ AI çözüldü: ${aiCode} (raw: ${aiData.raw || ""})`);
+        return aiCode;
       }
-      console.log(`  [CAPTCHA] AI başarısız: ${aiData.error || "kod boş"}, fallback deneniyor...`);
+
+      console.log(`  [CAPTCHA] AI geçersiz çıktı: "${aiData?.code || aiData?.raw || "boş"}" (error: ${aiData?.error || "yok"}), fallback deneniyor...`);
     } catch (aiErr) {
       console.log(`  [CAPTCHA] AI hata: ${aiErr.message}, fallback deneniyor...`);
     }
@@ -521,9 +671,13 @@ async function solveImageCaptcha(page) {
             });
             const resultData = await resultRes.json();
             if (resultData.status === "ready") {
-              const code = resultData.solution?.text;
-              console.log(`  [CAPTCHA] ✅ Capsolver çözüldü: ${code}`);
-              return code;
+              const code = normalizeCaptchaCode(resultData.solution?.text);
+              if (isLikelyCaptchaCode(code)) {
+                console.log(`  [CAPTCHA] ✅ Capsolver çözüldü: ${code}`);
+                return code;
+              }
+              console.log(`  [CAPTCHA] ⚠ Capsolver geçersiz çıktı: ${resultData.solution?.text || "boş"}`);
+              break;
             }
             if (resultData.errorId !== 0) break;
           }
@@ -570,9 +724,13 @@ async function solveImageCaptcha(page) {
         const resultData = await resultRes.json();
 
         if (resultData.status === "ready") {
-          const code = resultData.solution?.text;
-          console.log(`  [CAPTCHA] ✅ 2captcha çözüldü: ${code}`);
-          return code;
+          const code = normalizeCaptchaCode(resultData.solution?.text);
+          if (isLikelyCaptchaCode(code)) {
+            console.log(`  [CAPTCHA] ✅ 2captcha çözüldü: ${code}`);
+            return code;
+          }
+          console.log(`  [CAPTCHA] ⚠ 2captcha geçersiz çıktı: ${resultData.solution?.text || "boş"}`);
+          return null;
         }
         if (resultData.errorId !== 0) {
           console.log(`  [CAPTCHA] ❌ Sonuç hatası: ${resultData.errorDescription}`);
@@ -1000,25 +1158,25 @@ async function loginToIdata(page, account) {
     // 1) Üyelik numarası — ilk text input
     if (account.membership_number && textInputs[0]) {
       console.log(`  [LOGIN] Üyelik no giriliyor: ${account.membership_number}`);
-      await textInputs[0].click({ clickCount: 3 });
-      await textInputs[0].type(account.membership_number, { delay: 50 });
-      await delay(500, 1000);
+      const typed = await humanType(page, textInputs[0], account.membership_number, { minDelay: 140, maxDelay: 300, retries: 3 });
+      if (!typed) console.log("  [LOGIN] ⚠ Üyelik no tam yazılamadı");
+      await delay(700, 1200);
     }
 
     // 2) E-Posta — ikinci text input
     if (textInputs[1]) {
       console.log(`  [LOGIN] E-Posta giriliyor: ${account.email}`);
-      await textInputs[1].click({ clickCount: 3 });
-      await textInputs[1].type(account.email, { delay: 50 });
-      await delay(500, 1000);
+      const typed = await humanType(page, textInputs[1], account.email, { minDelay: 130, maxDelay: 280, retries: 3 });
+      if (!typed) console.log("  [LOGIN] ⚠ E-posta tam yazılamadı");
+      await delay(700, 1200);
     }
 
     // 3) Şifre — password input
     if (passwordInputs[0]) {
       console.log(`  [LOGIN] Şifre giriliyor`);
-      await passwordInputs[0].click({ clickCount: 3 });
-      await passwordInputs[0].type(account.password, { delay: 50 });
-      await delay(1000, 2000);
+      const typed = await humanType(page, passwordInputs[0], account.password, { minDelay: 120, maxDelay: 260, retries: 3 });
+      if (!typed) console.log("  [LOGIN] ⚠ Şifre tam yazılamadı");
+      await delay(1000, 1800);
     }
 
     // 4) CAPTCHA çöz ve son text input'a gir
@@ -1027,12 +1185,14 @@ async function loginToIdata(page, account) {
       // CAPTCHA input — captcha image'den sonraki son text input
       const freshTextInputs = await page.$$('input[type="text"], input[type="email"]');
       const captchaInput = freshTextInputs[freshTextInputs.length - 1]; // Son text input
+      let captchaTyped = false;
       if (captchaInput) {
         console.log(`  [LOGIN] CAPTCHA kodu giriliyor: ${captchaCode}`);
-        await captchaInput.click({ clickCount: 3 });
-        await captchaInput.type(captchaCode, { delay: 50 });
-      } else {
-        console.log(`  [LOGIN] ⚠ CAPTCHA input bulunamadı, evaluate ile deneniyor`);
+        captchaTyped = await humanType(page, captchaInput, captchaCode, { minDelay: 140, maxDelay: 300, retries: 2 });
+      }
+
+      if (!captchaInput || !captchaTyped) {
+        console.log(`  [LOGIN] ⚠ CAPTCHA input fallback (evaluate) kullanılıyor`);
         await page.evaluate((code) => {
           const inputs = Array.from(document.querySelectorAll('input[type="text"]'));
           const last = inputs[inputs.length - 1];
@@ -1044,7 +1204,7 @@ async function loginToIdata(page, account) {
           }
         }, captchaCode);
       }
-      await delay(500, 1000);
+      await delay(700, 1200);
     }
 
     // Giriş butonu

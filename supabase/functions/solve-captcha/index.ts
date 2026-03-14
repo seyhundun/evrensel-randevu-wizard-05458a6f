@@ -36,7 +36,7 @@ serve(async (req) => {
         messages: [
           {
             role: "system",
-            content: "You are an OCR specialist. You will be given an image of a CAPTCHA code. Your ONLY job is to read the text/numbers in the image and return ONLY the characters you see. No explanation, no extra text, no quotes - just the raw characters. The CAPTCHA usually contains 4-6 alphanumeric characters. Be very precise about distinguishing similar characters like 0/O, 1/l/I, 5/S, 8/B, 9/g, 2/Z.",
+            content: "You are an OCR specialist. Read ONLY the CAPTCHA characters from the verification image and return only the code. Ignore logos, brand text, headers, watermarks, and decorative text. No explanation, no quotes. The CAPTCHA is usually 4-6 alphanumeric characters. Be precise for similar pairs (0/O, 1/l/I, 5/S, 8/B, 9/g, 2/Z)."
           },
           {
             role: "user",
@@ -84,11 +84,20 @@ serve(async (req) => {
 
     const data = await response.json();
     const rawText = data.choices?.[0]?.message?.content?.trim() || "";
-    
-    // Clean: only keep alphanumeric characters
-    const code = rawText.replace(/[^a-zA-Z0-9]/g, "");
-    
-    console.log(`CAPTCHA solved: raw="${rawText}" clean="${code}"`);
+
+    // Clean: only keep alphanumeric characters + normalize uppercase
+    const code = rawText.replace(/[^a-zA-Z0-9]/g, "").toUpperCase();
+    const blockedTokens = new Set(["IDATA", "ITALYA", "ITALIA", "LOGIN", "REGISTER", "CAPTCHA"]);
+    const isValidCode = code.length >= 4 && code.length <= 6 && !blockedTokens.has(code) && !/^(.)\1{3,}$/.test(code);
+
+    console.log(`CAPTCHA solved: raw="${rawText}" clean="${code}" valid=${isValidCode}`);
+
+    if (!isValidCode) {
+      return new Response(
+        JSON.stringify({ ok: false, error: "invalid_captcha_read", raw: rawText, code }),
+        { status: 422, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
 
     return new Response(
       JSON.stringify({ ok: true, code, raw: rawText }),
