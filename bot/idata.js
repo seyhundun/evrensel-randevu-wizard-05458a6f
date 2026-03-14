@@ -1643,12 +1643,6 @@ async function mainLoop() {
         await idataLog("info", "Aktif hesap yok, bekleniyor");
       }
 
-      // 3. Her 50 döngüde bir şehir-ofis eşleşmelerini güncelle
-      scrapeCounter++;
-      if (scrapeCounter >= 50) {
-        await scrapeCityOffices();
-        scrapeCounter = 0;
-      }
 
       const waitSec = CONFIG.CHECK_INTERVAL_MS / 1000;
       await idataLog("bot_idle", `${waitSec}s bekleniyor...`);
