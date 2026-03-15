@@ -1936,11 +1936,17 @@ async function checkAppointments(config, account) {
         }
       } catch {}
 
+      // VFS API JSON hata yanıtı algılama (403201, 403102 vb.)
+      const isApiJsonError = body.length < 500 && body.includes('"code"') && (
+        body.includes("403201") || body.includes("403102") || body.includes("403") || body.includes("401")
+      );
+
       return {
         url,
         isNotFound: url.includes("page-not-found") || url.includes("404"),
         isSessionExpired: body.includes("oturum süresi doldu") || body.includes("oturum süresi dolmuş") || body.includes("session expired") || body.includes("oturumunuzun süresi") || (body.includes("oturum") && body.includes("geçersiz")),
         isBanned: body.includes("engellenmiş") || body.includes("blocked") || body.includes("banned"),
+        isApiError: isApiJsonError,
         isWaitingRoom: (document.title || "").toLowerCase().includes("waiting room"),
         isLoginPage: url.includes("/login"),
         isDashboard: url.includes("/dashboard") || url.includes("/appointment"),
@@ -1957,7 +1963,7 @@ async function checkAppointments(config, account) {
       };
     });
     const isBanned = pageCheck.isBanned;
-    const isError = pageCheck.isNotFound || pageCheck.isSessionExpired || isBanned || pageCheck.isWaitingRoom;
+    const isError = pageCheck.isNotFound || pageCheck.isSessionExpired || isBanned || pageCheck.isWaitingRoom || pageCheck.isApiError;
     const isLoginFailed = pageCheck.isLoginPage || pageCheck.hasLoginForm;
 
     if (isError || (isLoginFailed && !pageCheck.isDashboard)) {
