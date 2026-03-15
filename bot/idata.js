@@ -3295,11 +3295,15 @@ async function bookEarliestAppointment(page, account) {
               }
             }
           }
-          // Ayrıca datepicker input'undaki değeri kontrol et
+          // Date input değeri gerçekten seçilen günü yansıtıyor mu kontrol et
           const dateInputs = document.querySelectorAll("input[data-provide='datepicker'], input.datepicker, input[name*='date' i], input[name*='tarih' i], input[placeholder*='Tarih' i]");
           for (const inp of dateInputs) {
-            if (inp.value && inp.value.trim().length > 0) {
-              return { isActive: true, cls: "input-has-value: " + inp.value };
+            const v = (inp.value || "").trim();
+            if (!v) continue;
+            const dayMatch = v.match(/^(\d{1,2})[./-](\d{1,2})[./-](\d{2,4})$/) || v.match(/(\d{1,2})/);
+            const pickedDay = dayMatch ? parseInt(dayMatch[1]) : NaN;
+            if (!Number.isNaN(pickedDay) && pickedDay === dayNum) {
+              return { isActive: true, cls: "input-matched-day: " + v };
             }
           }
           return { isActive: false, cls: "" };
@@ -3485,19 +3489,45 @@ async function bookEarliestAppointment(page, account) {
     console.log(`  [BOOK] Tarih seçimi: ${JSON.stringify(dateSelected)}`);
 
     if (!dateSelected.selected) {
-      // Takvim açılmamış olabilir — input'a tarih yaz
+      // Takvim click seçimini doğrulayamadık — input fallback (seçilen güne öncelik ver)
+      const headerText = await page.evaluate(() => {
+        const header = document.querySelector(".datepicker-switch, .datepicker-days th.datepicker-switch, th.switch");
+        return header ? (header.textContent || "").trim() : "";
+      }).catch(() => "");
+
+      const monthMap = {
+        january: 1, february: 2, march: 3, april: 4, may: 5, june: 6, july: 7, august: 8, september: 9, october: 10, november: 11, december: 12,
+        ocak: 1, şubat: 2, subat: 2, mart: 3, nisan: 4, mayıs: 5, mayis: 5, haziran: 6, temmuz: 7, ağustos: 8, agustos: 8, eylül: 9, eylul: 9, ekim: 10, kasım: 11, kasim: 11, aralık: 12, aralik: 12,
+      };
+
+      let headerMonth = null;
+      let headerYear = null;
+      const headerLower = (headerText || "").toLowerCase();
+      for (const [name, num] of Object.entries(monthMap)) {
+        if (headerLower.includes(name)) { headerMonth = num; break; }
+      }
+      const ym = headerText.match(/(\d{4})/);
+      if (ym) headerYear = parseInt(ym[1]);
+
+      const fallbackDay = dateInfo?.found ? dateInfo.day : targetDay;
       let dateStr;
-      if (targetDay && targetMonth && targetYear) {
+      if (fallbackDay && headerMonth && headerYear) {
+        dateStr = `${String(fallbackDay).padStart(2, "0")}.${String(headerMonth).padStart(2, "0")}.${headerYear}`;
+      } else if (fallbackDay && targetMonth && targetYear) {
+        dateStr = `${String(fallbackDay).padStart(2, "0")}.${String(targetMonth).padStart(2, "0")}.${targetYear}`;
+      } else if (targetDay && targetMonth && targetYear) {
         dateStr = `${String(targetDay).padStart(2, "0")}.${String(targetMonth).padStart(2, "0")}.${targetYear}`;
       } else {
         const futureDate = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
         dateStr = `${String(futureDate.getDate()).padStart(2, "0")}.${String(futureDate.getMonth() + 1).padStart(2, "0")}.${futureDate.getFullYear()}`;
       }
+
       await page.evaluate((val) => {
         const inputs = Array.from(document.querySelectorAll("input"));
         const dateInput = inputs.find(inp => {
           const ph = (inp.placeholder || "").toLowerCase();
-          return ph.includes("randevu") || ph.includes("tarih");
+          const nm = (inp.name || "").toLowerCase();
+          return ph.includes("randevu") || ph.includes("tarih") || nm.includes("date") || nm.includes("tarih");
         });
         if (dateInput) {
           dateInput.value = "";
@@ -3506,6 +3536,12 @@ async function bookEarliestAppointment(page, account) {
           dateInput.dispatchEvent(new Event("input", { bubbles: true }));
           dateInput.dispatchEvent(new Event("change", { bubbles: true }));
           dateInput.dispatchEvent(new Event("blur", { bubbles: true }));
+          if (typeof window.jQuery !== "undefined") {
+            try {
+              window.jQuery(dateInput).datepicker("update", val);
+              window.jQuery(dateInput).trigger("changeDate");
+            } catch (_) {}
+          }
         }
       }, dateStr);
       console.log(`  [BOOK] Manuel tarih girildi: ${dateStr}`);
@@ -3731,6 +3767,16 @@ async function bookEarliestAppointment(page, account) {
     const ss3 = await takeScreenshotBase64(page);
     await idataLog("appt_time_selection", `⏰ Saat: ${timeButtonResult.clicked ? `${timeButtonResult.time} (${timeButtonResult.method})` : "seçilemedi"} | Butonlar: ${JSON.stringify((timeButtonInfo.allSlots || []).slice(0, 5))} | Hesap: ${account.email}`, ss3);
 
+    // Tarih/saat gerçekten seçilmediyse İLERİ'ye basma; booking'i yeniden dene
+    if (!dateSelected.selected || !timeButtonResult.clicked) {
+      const reason = !dateSelected.selected && !timeButtonResult.clicked
+        ? "date_and_time_not_confirmed"
+        : (!dateSelected.selected ? "date_not_confirmed" : "time_not_confirmed");
+      console.log(`  [BOOK] ⚠️ Doğrulama başarısız, Step5 atlanıyor: ${reason}`);
+      await idataLog("appt_selection_invalid", `⚠️ Tarih/saat seçimi doğrulanamadı (${reason}) — akış yeniden denenecek | Hesap: ${account.email}`, ss3);
+      return { success: false, partial: true, error: reason };
+    }
+
     // ===== STEP 5: İLERİ butonuna tıkla (TARİH sayfasından çık) =====
     console.log("  [BOOK] Step 5: İLERİ butonuna tıklanıyor (tarih sayfası)...");
     
@@ -3875,10 +3921,9 @@ async function bookEarliestAppointment(page, account) {
           }
           const greenDays = allDays.filter(d => d.isGreen).sort((a, b) => a.day - b.day);
           const pool = greenDays.length > 0 ? greenDays : allDays;
-          // Rastgele yeşil gün seç (her seferinde farklı denemek için)
+          // İlk yeşili değil, bir sonrakini (2. uygun gün) seç
           if (pool.length > 0) {
-            const idx = Math.floor(Math.random() * pool.length);
-            const target = pool[idx];
+            const target = pool.length > 1 ? pool[1] : pool[0];
             return { found: true, day: target.day, x: target.x, y: target.y, greenCount: greenDays.length, postbackTarget: target.postbackTarget, postbackArg: target.postbackArg, hasLink: target.hasLink };
           }
           return { found: false };
@@ -4012,9 +4057,11 @@ async function bookEarliestAppointment(page, account) {
       const pageState = await page.evaluate(() => {
         const body = (document.body?.innerText || "");
         const lower = body.toLowerCase();
+        const url = window.location.href;
+        const urlLower = url.toLowerCase();
         const checkboxes = Array.from(document.querySelectorAll('input[type="checkbox"]'));
         return {
-          url: window.location.href,
+          url,
           bodyPreview: body.substring(0, 2000),
           hasIleri: !!Array.from(document.querySelectorAll('a, button, input')).find(el => {
             const txt = (el.innerText || el.value || "").trim().toUpperCase();
@@ -4034,6 +4081,7 @@ async function bookEarliestAppointment(page, account) {
           hasSozlesme: lower.includes("okudum") || lower.includes("kabul ediyorum"),
           hasKrediKarti: lower.includes("bankamatik kart") || lower.includes("kredi kartı") || lower.includes("kart numarası") || lower.includes("cvv"),
           hasDateWarning: lower.includes("bir randevu tarihi ve saati seçiniz") || lower.includes("lütfen başka bir tarih seçin") || lower.includes("başka bir tarih seçin"),
+          hasDashboardHome: (urlLower.includes("/membership/dashboard") || lower.includes("duyurular")) && (lower.includes("randevu al") || lower.includes("randevu düzenleme")),
           hasError: lower.includes("hata") || lower.includes("error"),
           success: lower.includes("başarılı") || lower.includes("randevunuz oluşturulmuştur") || lower.includes("onaylandı") || lower.includes("tamamlandı"),
           checkboxCount: checkboxes.length,
@@ -4055,6 +4103,17 @@ async function bookEarliestAppointment(page, account) {
         }).catch(() => {});
         await idataLog("appt_date_warning", `⚠️ Tarih/saat warning Step6'da yakalandı, booking akışı yeniden denenecek | Hesap: ${account.email}`, ssPage);
         return { success: false, partial: true, error: "date_time_warning_after_ileri" };
+      }
+
+      // ===== Dashboard/duyurular sayfasına geri atıldıysa booking'i yeniden başlat =====
+      if (pageState.hasDashboardHome) {
+        console.log("  [BOOK] ⚠️ Akış dashboard/duyurular sayfasına döndü (seçim backend'e işlenmemiş olabilir). Yeniden denenecek.");
+        await idataLog("appt_redirect_dashboard", `⚠️ Akış duyurular/dashboard sayfasına döndü, booking yeniden denenecek | URL: ${pageState.url} | Hesap: ${account.email}`, ssPage);
+        try {
+          await page.goto(CONFIG.APPOINTMENT_URL, { waitUntil: "domcontentloaded", timeout: 60000 });
+          await delay(2000, 3500);
+        } catch (_) {}
+        return { success: false, partial: true, error: "redirected_dashboard_after_selection" };
       }
 
       // ===== Başarılı =====
