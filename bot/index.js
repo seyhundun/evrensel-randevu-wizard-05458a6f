@@ -1969,6 +1969,7 @@ async function checkAppointments(config, account) {
     if (isError || (isLoginFailed && !pageCheck.isDashboard)) {
       let errorType = "Bilinmeyen hata";
       if (isBanned) errorType = "❌ Hesap engellenmiş!";
+      else if (pageCheck.isApiError) errorType = "❌ VFS API hatası (403)";
       else if (pageCheck.isNotFound) errorType = "❌ Sayfa bulunamadı (404)";
       else if (pageCheck.isSessionExpired) errorType = "❌ Oturum süresi dolmuş";
       else if (pageCheck.isWaitingRoom) errorType = "❌ Hala waiting room'da";
