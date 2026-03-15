@@ -591,7 +591,16 @@ async function waitForLoginFormAfterQueue(page, loginUrl) {
       pageState.body.includes("oturumunuzun süresi") ||
       (pageState.body.includes("oturum") && pageState.body.includes("geçersiz"));
 
-    if (notFoundLike || sessionExpiredLike) {
+    // VFS API JSON hata yanıtları (403201, 403102 vb.)
+    const isApiError =
+      pageState.body.includes('"code"') && (
+        pageState.body.includes("403201") ||
+        pageState.body.includes("403102") ||
+        pageState.body.includes("403") ||
+        pageState.body.includes("401")
+      ) && pageState.body.length < 500; // JSON yanıt genelde kısa olur
+
+    if (notFoundLike || sessionExpiredLike || isApiError) {
       notFoundRecoveries += 1;
       console.log(`  [QUEUE] ⚠ Not-found/session sayfasına düştü (${notFoundRecoveries}/3), login sayfasına dönülüyor...`);
 
@@ -1927,11 +1936,17 @@ async function checkAppointments(config, account) {
         }
       } catch {}
 
+      // VFS API JSON hata yanıtı algılama (403201, 403102 vb.)
+      const isApiJsonError = body.length < 500 && body.includes('"code"') && (
+        body.includes("403201") || body.includes("403102") || body.includes("403") || body.includes("401")
+      );
+
       return {
         url,
         isNotFound: url.includes("page-not-found") || url.includes("404"),
         isSessionExpired: body.includes("oturum süresi doldu") || body.includes("oturum süresi dolmuş") || body.includes("session expired") || body.includes("oturumunuzun süresi") || (body.includes("oturum") && body.includes("geçersiz")),
         isBanned: body.includes("engellenmiş") || body.includes("blocked") || body.includes("banned"),
+        isApiError: isApiJsonError,
         isWaitingRoom: (document.title || "").toLowerCase().includes("waiting room"),
         isLoginPage: url.includes("/login"),
         isDashboard: url.includes("/dashboard") || url.includes("/appointment"),
@@ -1948,12 +1963,13 @@ async function checkAppointments(config, account) {
       };
     });
     const isBanned = pageCheck.isBanned;
-    const isError = pageCheck.isNotFound || pageCheck.isSessionExpired || isBanned || pageCheck.isWaitingRoom;
+    const isError = pageCheck.isNotFound || pageCheck.isSessionExpired || isBanned || pageCheck.isWaitingRoom || pageCheck.isApiError;
     const isLoginFailed = pageCheck.isLoginPage || pageCheck.hasLoginForm;
 
     if (isError || (isLoginFailed && !pageCheck.isDashboard)) {
       let errorType = "Bilinmeyen hata";
       if (isBanned) errorType = "❌ Hesap engellenmiş!";
+      else if (pageCheck.isApiError) errorType = "❌ VFS API hatası (403)";
       else if (pageCheck.isNotFound) errorType = "❌ Sayfa bulunamadı (404)";
       else if (pageCheck.isSessionExpired) errorType = "❌ Oturum süresi dolmuş";
       else if (pageCheck.isWaitingRoom) errorType = "❌ Hala waiting room'da";
@@ -1962,8 +1978,8 @@ async function checkAppointments(config, account) {
       else if (isLoginFailed) errorType = "❌ Giriş başarısız";
 
       // Session expired veya Turnstile hatalarında IP'yi anında banla — sıradaki IP + temiz profil ile yeniden başlasın
-      if (pageCheck.isSessionExpired || errorType.includes("Turnstile") || pageCheck.isWaitingRoom) {
-        banIpImmediately(activeIp, "post_login_session_or_turnstile_error");
+      if (pageCheck.isSessionExpired || pageCheck.isApiError || errorType.includes("Turnstile") || pageCheck.isWaitingRoom) {
+        banIpImmediately(activeIp, "post_login_session_or_api_or_turnstile_error");
       }
 
       const finalDiag = await getTurnstileDiagnostics(page).catch(() => null);
@@ -1976,7 +1992,7 @@ async function checkAppointments(config, account) {
       if (isBanned) { await updateAccountStatus(account.id, "banned"); return { found: false, accountBanned: true, hadError: true }; }
       
       // Session/Turnstile/waiting-room durumunda hemen sonraki IP ile devam et
-      if (pageCheck.isSessionExpired || errorType.includes("Turnstile") || pageCheck.isWaitingRoom) {
+      if (pageCheck.isSessionExpired || pageCheck.isApiError || errorType.includes("Turnstile") || pageCheck.isWaitingRoom) {
         return { found: false, accountBanned: false, ipBlocked: true, hadError: true };
       }
       
