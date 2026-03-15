@@ -1992,7 +1992,7 @@ async function checkAppointments(config, account) {
       if (isBanned) { await updateAccountStatus(account.id, "banned"); return { found: false, accountBanned: true, hadError: true }; }
       
       // Session/Turnstile/waiting-room durumunda hemen sonraki IP ile devam et
-      if (pageCheck.isSessionExpired || errorType.includes("Turnstile") || pageCheck.isWaitingRoom) {
+      if (pageCheck.isSessionExpired || pageCheck.isApiError || errorType.includes("Turnstile") || pageCheck.isWaitingRoom) {
         return { found: false, accountBanned: false, ipBlocked: true, hadError: true };
       }
       
