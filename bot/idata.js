@@ -3796,10 +3796,10 @@ async function bookEarliestAppointment(page, account) {
         dateVerify = await verifyDateSelection();
       }
 
-      // === YÖNTEM 5: Inner <a>/onclick/postback kombinasyonu ===
+      // === YÖNTEM 5: Aynı hedef hücre üzerinde inner <a>/onclick/postback kombinasyonu ===
       if (!dateVerify.isActive) {
-        console.log("  [BOOK] Tarih aktif değil, inner link + onclick + postback deneniyor...");
-        const linkResult = await page.evaluate((dayNum) => {
+        console.log("  [BOOK] Tarih aktif değil, hedef açık hücrede inner link + onclick + postback deneniyor...");
+        const linkResult = await page.evaluate((dayNum, targetX, targetY) => {
           const fireClick = (el) => {
             if (!el) return;
             try {
@@ -3813,6 +3813,7 @@ async function bookEarliestAppointment(page, account) {
             } catch (_) {}
           };
 
+          const candidates = [];
           const calContainers = Array.from(document.querySelectorAll("[class*='datepicker'], [class*='calendar'], table.table-condensed"));
           for (const cal of calContainers) {
             const style = window.getComputedStyle(cal);
@@ -3822,31 +3823,55 @@ async function bookEarliestAppointment(page, account) {
             for (const d of tds) {
               const text = (d.innerText || d.textContent || "").trim();
               if (parseInt(text, 10) !== dayNum) continue;
-              if (d.classList.contains("disabled") || d.classList.contains("old") || d.classList.contains("new") || d.classList.contains("off")) continue;
+
+              const childFlagEl = d.querySelector("a, span, div");
+              const classBlob = `${d.className || ""} ${childFlagEl?.className || ""}`.toLowerCase();
+              if (classBlob.includes("disabled") || classBlob.includes("old") || classBlob.includes("new") || classBlob.includes("off")) continue;
+
+              const tdBg = window.getComputedStyle(d).backgroundColor;
+              const childBg = childFlagEl ? window.getComputedStyle(childFlagEl).backgroundColor : "";
+              const bgColor = childBg && childBg !== "rgba(0, 0, 0, 0)" ? childBg : tdBg;
+              const rgbMatch = bgColor.match(/rgba?\((\d+),\s*(\d+),\s*(\d+)/);
+              let isGreen = classBlob.includes("enabled-day") || classBlob.includes("bg-success") || classBlob.includes("success");
+              let isYellow = classBlob.includes("warning") || classBlob.includes("bg-warning") || classBlob.includes("today") || classBlob.includes("active");
+              let isRed = classBlob.includes("danger") || classBlob.includes("bg-danger") || classBlob.includes("disabled-day");
+              if (rgbMatch) {
+                const r = parseInt(rgbMatch[1], 10), g = parseInt(rgbMatch[2], 10), b = parseInt(rgbMatch[3], 10);
+                if (g > 100 && g > r * 1.2 && g > b * 1.2) isGreen = true;
+                if (r > 200 && g > 150 && b < 120) isYellow = true;
+                if (r > 150 && r > g * 1.4 && r > b * 1.4) isRed = true;
+              }
+              if (!isGreen || isYellow || isRed) continue;
 
               const link = d.querySelector("a") || d;
+              const rect = link.getBoundingClientRect();
               const href = (link.getAttribute && link.getAttribute("href")) || "";
               const onclick = `${(link.getAttribute && link.getAttribute("onclick")) || ""} ${(d.getAttribute && d.getAttribute("onclick")) || ""}`;
-
-              fireClick(link);
-
-              const pbMatch = (href.match(/__doPostBack\(['"](.*?)['"],\s*['"](.*?)['"]\)/) || onclick.match(/__doPostBack\(['"](.*?)['"],\s*['"](.*?)['"]\)/));
-              if (pbMatch && typeof window.__doPostBack === "function") {
-                try { window.__doPostBack(pbMatch[1], pbMatch[2] || ""); } catch (_) {}
-              }
-
-              if (href && href.includes("__doPostBack")) {
-                try { eval(href.replace("javascript:", "")); } catch (_) {}
-              }
-              if (onclick && onclick.includes("__doPostBack")) {
-                try { eval(onclick); } catch (_) {}
-              }
-
-              return { clicked: true, via: link.tagName || "TD", href: href.substring(0, 120), onclick: onclick.substring(0, 120) };
+              const distance = Math.hypot((rect.x + rect.width / 2) - targetX, (rect.y + rect.height / 2) - targetY);
+              candidates.push({ link, href, onclick, distance });
             }
           }
-          return { clicked: false };
-        }, dateInfo.day);
+
+          candidates.sort((a, b) => a.distance - b.distance);
+          const target = candidates[0];
+          if (!target) return { clicked: false };
+
+          fireClick(target.link);
+
+          const pbMatch = (target.href.match(/__doPostBack\(['"](.*?)['"],\s*['"](.*?)['"]\)/) || target.onclick.match(/__doPostBack\(['"](.*?)['"],\s*['"](.*?)['"]\)/));
+          if (pbMatch && typeof window.__doPostBack === "function") {
+            try { window.__doPostBack(pbMatch[1], pbMatch[2] || ""); } catch (_) {}
+          }
+
+          if (target.href && target.href.includes("__doPostBack")) {
+            try { eval(target.href.replace("javascript:", "")); } catch (_) {}
+          }
+          if (target.onclick && target.onclick.includes("__doPostBack")) {
+            try { eval(target.onclick); } catch (_) {}
+          }
+
+          return { clicked: true, href: target.href.substring(0, 120), onclick: target.onclick.substring(0, 120), distance: Math.round(target.distance) };
+        }, dateInfo.day, dateInfo.x, dateInfo.y);
 
         console.log(`  [BOOK] Link/postback sonucu: ${JSON.stringify(linkResult)}`);
         await delay(1500, 2500);
