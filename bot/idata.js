@@ -3534,23 +3534,50 @@ async function bookEarliestAppointment(page, account) {
     // ===== STEP 5: İLERİ butonuna tıkla (TARİH sayfasından çık) =====
     console.log("  [BOOK] Step 5: İLERİ butonuna tıklanıyor (tarih sayfası)...");
     
-    const step5Ileri = await page.evaluate(() => {
+    // İLERİ butonunun koordinatlarını al
+    const ileriInfo = await page.evaluate(() => {
       const candidates = Array.from(document.querySelectorAll('a, button, input[type="submit"], input[type="button"]'));
       const ileriBtn = candidates.find(el => {
         const txt = (el.innerText || el.value || el.textContent || "").trim().toUpperCase();
         return txt === "İLERİ" || txt === "ILERI" || txt === "DEVAM" || txt === "NEXT";
-      });
+      }) || document.querySelector('.btn-success, a.btn-success');
+      
       if (ileriBtn) {
-        ileriBtn.click();
-        return { clicked: true, text: (ileriBtn.innerText || ileriBtn.value || "").trim() };
+        const rect = ileriBtn.getBoundingClientRect();
+        const href = ileriBtn.getAttribute("href") || "";
+        let postbackTarget = null, postbackArg = null;
+        const pbMatch = href.match(/__doPostBack\(['"](.*?)['"],\s*['"](.*?)['"]\)/);
+        if (pbMatch) { postbackTarget = pbMatch[1]; postbackArg = pbMatch[2]; }
+        return { 
+          found: true, text: (ileriBtn.innerText || ileriBtn.value || "").trim(),
+          x: rect.x + rect.width / 2, y: rect.y + rect.height / 2,
+          postbackTarget, postbackArg
+        };
       }
-      const greenBtn = document.querySelector('.btn-success, a.btn-success');
-      if (greenBtn) {
-        greenBtn.click();
-        return { clicked: true, text: (greenBtn.innerText || "").trim(), method: "green" };
-      }
-      return { clicked: false };
+      return { found: false };
     });
+    
+    let step5Ileri = { clicked: false };
+    if (ileriInfo.found) {
+      // HumanClick ile İLERİ butonuna tıkla
+      try {
+        await humanClick(page, ileriInfo.x, ileriInfo.y, { preMovesNear: true });
+        step5Ileri = { clicked: true, text: ileriInfo.text };
+        console.log(`  [BOOK] ✅ HumanClick İLERİ: ${ileriInfo.text} (x:${Math.round(ileriInfo.x)}, y:${Math.round(ileriInfo.y)})`);
+      } catch (e) {
+        // Fallback: DOM click + postback
+        console.log(`  [BOOK] HumanClick İLERİ hata: ${e.message}, DOM click deneniyor...`);
+        await page.evaluate(() => {
+          const candidates = Array.from(document.querySelectorAll('a, button, input[type="submit"], input[type="button"]'));
+          const btn = candidates.find(el => {
+            const txt = (el.innerText || el.value || el.textContent || "").trim().toUpperCase();
+            return txt === "İLERİ" || txt === "ILERI";
+          });
+          if (btn) btn.click();
+        });
+        step5Ileri = { clicked: true, text: ileriInfo.text, method: "dom_fallback" };
+      }
+    }
 
     console.log(`  [BOOK] Step 5 İLERİ: ${JSON.stringify(step5Ileri)}`);
     
