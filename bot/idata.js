@@ -3670,7 +3670,7 @@ async function bookEarliestAppointment(page, account) {
       // ===== Başarılı =====
       if (pageState.success) {
         startAlarm();
-        await idataLog("appt_booked", `🎉 RANDEVU ALINDI! | Hesap: ${account.email}`, ssPage);
+        await idataLog("appt_booked", `🎉 ÖDEME BAŞARILI — RANDEVU ALINDI! | Hesap: ${account.email}`, ssPage);
         return { success: true, date: dateSelected?.day || "?" };
       }
 
