@@ -84,21 +84,6 @@ export default function BotSettingsPanel() {
     }
   };
 
-  const loadCurrentIp = async () => {
-    const { data } = await supabase
-      .from("tracking_logs")
-      .select("message, created_at")
-      .eq("status", "ip_change")
-      .order("created_at", { ascending: false })
-      .limit(1);
-    if (data && data.length > 0) {
-      const match = data[0].message?.match(/Aktif IP:\\s*([^\s|]+)/);
-      if (match) {
-        setCurrentIp(match[1]);
-        setLastIpReset(data[0].created_at);
-      }
-    }
-  };
 
   const getDraft = (key: string) => draft[key] ?? settings.find(s => s.key === key)?.value ?? "";
 
