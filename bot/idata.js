@@ -3289,9 +3289,9 @@ async function bookEarliestAppointment(page, account) {
       const selectedCalendar = candidateCalendars[0];
       const allDays = selectedCalendar.days;
 
-      const greenDays = allDays.filter(d => d.isGreen).sort((a, b) => a.day - b.day);
-      const nonRedDays = allDays.filter(d => !d.isRed && !d.isYellow).sort((a, b) => a.day - b.day);
-      const pool = greenDays.length > 0 ? greenDays : (nonRedDays.length > 0 ? nonRedDays : allDays);
+      const greenDays = allDays.filter(d => d.isGreen && !d.isRed).sort((a, b) => a.day - b.day);
+      const clickableDays = allDays.filter(d => !d.isRed && !d.isYellow && (d.hasLink || d.isGreen)).sort((a, b) => a.day - b.day);
+      const pool = greenDays.length > 0 ? greenDays : clickableDays;
 
       if (pool.length > 0) {
         let target = null;
