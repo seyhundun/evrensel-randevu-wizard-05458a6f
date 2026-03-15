@@ -3064,8 +3064,22 @@ async function bookEarliestAppointment(page, account) {
     let dateSelected = { selected: false, day: 0, greenCount: 0, bgColor: "" };
     
     if (dateInfo.found) {
-      // Puppeteer gerçek mouse tıklaması
+      // İnsan taklidi: takvimde rastgele mouse hareketleri yap
       try {
+        const viewportSize = await page.evaluate(() => ({ w: window.innerWidth, h: window.innerHeight }));
+        // Rastgele 3-5 noktaya mouse hareket ettir (takvim bölgesinde)
+        const humanMoves = 3 + Math.floor(Math.random() * 3);
+        for (let hm = 0; hm < humanMoves; hm++) {
+          const randX = dateInfo.x + (Math.random() - 0.5) * 200;
+          const randY = dateInfo.y + (Math.random() - 0.5) * 150;
+          const clampX = Math.max(50, Math.min(viewportSize.w - 50, randX));
+          const clampY = Math.max(50, Math.min(viewportSize.h - 50, randY));
+          await page.mouse.move(clampX, clampY, { steps: 5 + Math.floor(Math.random() * 10) });
+          await delay(200 + Math.random() * 600, 500 + Math.random() * 800);
+        }
+        // Hedef güne doğru yavaşça hareket et
+        await page.mouse.move(dateInfo.x, dateInfo.y, { steps: 10 + Math.floor(Math.random() * 15) });
+        await delay(300 + Math.random() * 500, 600 + Math.random() * 700);
         await page.mouse.click(dateInfo.x, dateInfo.y);
         console.log(`  [BOOK] ✅ Mouse.click tarih: Gün ${dateInfo.day} (x:${Math.round(dateInfo.x)}, y:${Math.round(dateInfo.y)})`);
         dateSelected = { selected: true, day: dateInfo.day, isGreen: dateInfo.isGreen, greenCount: dateInfo.greenCount, bgColor: dateInfo.bgColor };
