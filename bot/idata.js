@@ -3108,61 +3108,145 @@ async function bookEarliestAppointment(page, account) {
     await idataLog("appt_date_picked", `📅 Tarih seçildi: ${dateSelected.selected ? `Gün ${dateSelected.day} (${dateSelected.greenCount} yeşil gün, bg: ${dateSelected.bgColor})` : "Manuel"} | Hesap: ${account.email}`, ss2);
 
     // ===== STEP 4: Turuncu saat butonuna tıkla =====
-    // Tarih seçildikten sonra altında turuncu/kırmızı saat butonları belirir (ör: "⏰ 08:00")
     console.log("  [BOOK] Step 4: Turuncu saat butonu aranıyor...");
     await delay(2000, 3000);
 
-    const timeButtonResult = await page.evaluate(() => {
-      // Saat butonları: turuncu/kırmızı arka planlı, "08:00" veya "⏰ 08:00" metinli
-      const candidates = Array.from(document.querySelectorAll("a, button, span, div, li, label"));
+    // Önce saat butonlarının konumunu tespit et
+    const timeButtonInfo = await page.evaluate(() => {
+      const candidates = Array.from(document.querySelectorAll("a, button, span, div, li, label, td"));
       const timeButtons = [];
       for (const el of candidates) {
         const text = (el.innerText || el.textContent || "").trim();
-        const timeMatch = text.match(/(\d{2}:\d{2})/);
-        if (timeMatch) {
-          const style = window.getComputedStyle(el);
-          const isVisible = style.display !== "none" && style.visibility !== "hidden" && el.offsetParent !== null;
-          if (isVisible && el.offsetHeight > 10) {
-            // Turuncu/kırmızı renk kontrolü
-            const bgColor = style.backgroundColor;
-            const rgbMatch = bgColor.match(/rgba?\((\d+),\s*(\d+),\s*(\d+)/);
-            let isOrange = false;
-            if (rgbMatch) {
-              const r = parseInt(rgbMatch[1]), g = parseInt(rgbMatch[2]), b = parseInt(rgbMatch[3]);
-              // Turuncu: r yüksek, g orta, b düşük
-              isOrange = r > 180 && g > 80 && b < 100;
-            }
-            timeButtons.push({ el, time: timeMatch[1], text, isOrange, bgColor });
+        const timeMatch = text.match(/^(\d{2}:\d{2})$/);
+        if (!timeMatch) continue;
+        const style = window.getComputedStyle(el);
+        const isVisible = style.display !== "none" && style.visibility !== "hidden" && el.offsetParent !== null;
+        if (!isVisible || el.offsetHeight < 10) continue;
+        
+        const bgColor = style.backgroundColor;
+        const rgbMatch = bgColor.match(/rgba?\((\d+),\s*(\d+),\s*(\d+)/);
+        let isOrange = false;
+        if (rgbMatch) {
+          const r = parseInt(rgbMatch[1]), g = parseInt(rgbMatch[2]), b = parseInt(rgbMatch[3]);
+          isOrange = r > 180 && g > 80 && b < 100;
+        }
+        const cls = (el.className || "").toLowerCase();
+        if (cls.includes("btn-warning") || cls.includes("btn-orange") || cls.includes("active")) isOrange = true;
+        
+        const rect = el.getBoundingClientRect();
+        timeButtons.push({ 
+          time: timeMatch[1], isOrange, bgColor, 
+          tag: el.tagName, cls: (el.className || "").substring(0, 100),
+          x: rect.x + rect.width / 2, 
+          y: rect.y + rect.height / 2
+        });
+      }
+      
+      const orangeButtons = timeButtons.filter(t => t.isOrange);
+      const target = orangeButtons.length > 0 ? orangeButtons[0] : (timeButtons.length > 0 ? timeButtons[0] : null);
+      
+      return { 
+        found: !!target, target, totalSlots: timeButtons.length,
+        allSlots: timeButtons.map(t => ({ time: t.time, isOrange: t.isOrange, tag: t.tag }))
+      };
+    });
+
+    console.log(`  [BOOK] Saat butonları: ${JSON.stringify(timeButtonInfo)}`);
+    
+    let timeButtonResult = { clicked: false };
+    
+    if (timeButtonInfo.found && timeButtonInfo.target) {
+      const t = timeButtonInfo.target;
+      
+      // 1) Puppeteer gerçek mouse tıklaması (DOM click yerine fiziksel)
+      try {
+        await page.mouse.click(t.x, t.y);
+        console.log(`  [BOOK] ✅ Mouse.click saat: ${t.time} (x:${Math.round(t.x)}, y:${Math.round(t.y)})`);
+        timeButtonResult = { clicked: true, time: t.time, isOrange: t.isOrange, method: "mouse_click" };
+      } catch (mouseErr) {
+        console.log(`  [BOOK] Mouse.click hata: ${mouseErr.message}`);
+      }
+      
+      await delay(1500, 2500);
+      
+      // 2) Doğrulama — tıklama algılandı mı?
+      const timeVerify = await page.evaluate((targetTime) => {
+        const candidates = Array.from(document.querySelectorAll("a, button, span, div, li, label, td"));
+        let isActive = false;
+        for (const el of candidates) {
+          const text = (el.innerText || el.textContent || "").trim();
+          if (text === targetTime) {
+            const cls = (el.className || "").toLowerCase();
+            const bg = window.getComputedStyle(el).backgroundColor;
+            isActive = cls.includes("active") || cls.includes("selected") || cls.includes("checked");
+            return { isActive, cls: (el.className || "").substring(0, 80), bg };
           }
         }
-      }
+        return { isActive: false };
+      }, t.time);
       
-      if (timeButtons.length > 0) {
-        // Turuncu olanları tercih et, yoksa ilkini seç
-        const orangeButtons = timeButtons.filter(t => t.isOrange);
-        const target = orangeButtons.length > 0 ? orangeButtons[0] : timeButtons[0];
-        target.el.click();
-        return { clicked: true, time: target.time, isOrange: target.isOrange, totalSlots: timeButtons.length, bgColor: target.bgColor };
-      }
+      console.log(`  [BOOK] Saat doğrulama: ${JSON.stringify(timeVerify)}`);
       
-      // Fallback: select dropdown
-      const selects = Array.from(document.querySelectorAll("select"));
-      for (const sel of selects) {
-        const labelText = (sel.closest("div, label")?.innerText || sel.name || sel.id || "").toLowerCase();
-        if (labelText.includes("saat") && sel.options.length > 1) {
-          sel.selectedIndex = 1;
-          sel.dispatchEvent(new Event("change", { bubbles: true }));
-          return { clicked: true, time: sel.options[1]?.text || "?", method: "select" };
+      // 3) Seçilmediyse — element handle ile tıkla
+      if (!timeVerify.isActive) {
+        console.log("  [BOOK] Saat aktif değil, element handle ile deneniyor...");
+        try {
+          const timeElements = await page.$$("a, button, span, div, li, label, td");
+          for (const elHandle of timeElements) {
+            const elText = await page.evaluate(el => (el.innerText || el.textContent || "").trim(), elHandle);
+            if (elText === t.time) {
+              await elHandle.click();
+              console.log(`  [BOOK] ✅ Element handle click: ${t.time}`);
+              timeButtonResult.method = "element_handle";
+              break;
+            }
+          }
+        } catch (ehErr) {
+          console.log(`  [BOOK] Element handle hata: ${ehErr.message}`);
         }
+        await delay(1000, 2000);
+        
+        // 4) Hala seçilmediyse — dispatch events
+        await page.evaluate((targetTime) => {
+          const candidates = Array.from(document.querySelectorAll("a, button, span, div, li, label, td"));
+          for (const el of candidates) {
+            const text = (el.innerText || el.textContent || "").trim();
+            if (text === targetTime) {
+              el.dispatchEvent(new MouseEvent("mousedown", { bubbles: true, cancelable: true }));
+              el.dispatchEvent(new MouseEvent("mouseup", { bubbles: true, cancelable: true }));
+              el.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
+              el.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true }));
+              el.dispatchEvent(new PointerEvent("pointerup", { bubbles: true }));
+              el.focus && el.focus();
+              break;
+            }
+          }
+        }, t.time);
+        timeButtonResult.method = "full_event_dispatch";
+        await delay(1000, 1500);
       }
-      
-      return { clicked: false };
-    });
-    console.log(`  [BOOK] Saat seçimi: ${JSON.stringify(timeButtonResult)}`);
+    } else {
+      // Fallback: select dropdown
+      const selectResult = await page.evaluate(() => {
+        const selects = Array.from(document.querySelectorAll("select"));
+        for (const sel of selects) {
+          const labelText = (sel.closest("div, label")?.innerText || sel.name || sel.id || "").toLowerCase();
+          if (labelText.includes("saat") && sel.options.length > 1) {
+            sel.selectedIndex = 1;
+            sel.dispatchEvent(new Event("change", { bubbles: true }));
+            return { clicked: true, time: sel.options[1]?.text || "?", method: "select" };
+          }
+        }
+        return { clicked: false };
+      });
+      timeButtonResult = selectResult;
+    }
+    
+    console.log(`  [BOOK] Saat seçimi sonuç: ${JSON.stringify(timeButtonResult)}`);
     await delay(2000, 3000);
 
     const ss3 = await takeScreenshotBase64(page);
-    await idataLog("appt_time_selection", `⏰ Saat: ${timeButtonResult.clicked ? `${timeButtonResult.time} (turuncu: ${timeButtonResult.isOrange})` : "seçilemedi"} | Hesap: ${account.email}`, ss3);
+    await idataLog("appt_time_selection", `⏰ Saat: ${timeButtonResult.clicked ? `${timeButtonResult.time} (${timeButtonResult.method})` : "seçilemedi"} | Butonlar: ${JSON.stringify((timeButtonInfo.allSlots || []).slice(0, 5))} | Hesap: ${account.email}`, ss3);
 
     // ===== STEP 5: İLERİ butonuna tıkla (TARİH sayfasından çık) =====
     console.log("  [BOOK] Step 5: İLERİ butonuna tıklanıyor (tarih sayfası)...");
