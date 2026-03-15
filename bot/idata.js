@@ -2811,9 +2811,11 @@ async function bookEarliestAppointment(page, account) {
       .filter(Boolean)
       .sort((a, b) => a.timestamp - b.timestamp);
 
+    const announcedAppointmentDateKeys = announcedAppointmentDates.map((d) => d.normalized);
     const preferredAppointmentDate = announcedAppointmentDates[0] || null;
     if (preferredAppointmentDate) {
       console.log(`  [BOOK] En erken ilan edilen randevu tarihi hedeflenecek: ${preferredAppointmentDate.raw}`);
+      console.log(`  [BOOK] Açık tarih whitelist: ${announcedAppointmentDateKeys.join(", ")}`);
     }
     
     if (!step1Result.clicked) {
