@@ -3170,8 +3170,22 @@ async function bookEarliestAppointment(page, account) {
           if (d.classList.contains("bg-danger") || d.classList.contains("danger")) isRed = true;
           if (d.classList.contains("bg-warning") || d.classList.contains("warning") || d.classList.contains("today") || d.classList.contains("active")) isYellow = true;
           
-          const rect = d.getBoundingClientRect();
-          allDays.push({ day: dayNum, isGreen, isRed, isYellow, bgColor, x: rect.x + rect.width / 2, y: rect.y + rect.height / 2 });
+          // ASP.NET postback: <td> içindeki <a> etiketini bul
+          const innerLink = d.querySelector("a[href*='doPostBack'], a[href*='javascript'], a");
+          const postbackHref = innerLink ? (innerLink.getAttribute("href") || "") : "";
+          // __doPostBack argümanlarını çıkar
+          let postbackTarget = null, postbackArg = null;
+          const pbMatch = postbackHref.match(/__doPostBack\(['"](.*?)['"],\s*['"](.*?)['"]\)/);
+          if (pbMatch) { postbackTarget = pbMatch[1]; postbackArg = pbMatch[2]; }
+          
+          const clickableEl = innerLink || d;
+          const rect = clickableEl.getBoundingClientRect();
+          allDays.push({ 
+            day: dayNum, isGreen, isRed, isYellow, bgColor, 
+            x: rect.x + rect.width / 2, y: rect.y + rect.height / 2,
+            hasLink: !!innerLink, postbackTarget, postbackArg,
+            linkHref: postbackHref.substring(0, 200)
+          });
         }
       }
       
@@ -3187,7 +3201,9 @@ async function bookEarliestAppointment(page, account) {
         return { 
           found: true, day: target.day, isGreen: target.isGreen,
           x: target.x, y: target.y,
-          totalDays: allDays.length, greenCount: greenDays.length, bgColor: target.bgColor
+          totalDays: allDays.length, greenCount: greenDays.length, bgColor: target.bgColor,
+          hasLink: target.hasLink, postbackTarget: target.postbackTarget, postbackArg: target.postbackArg,
+          linkHref: target.linkHref
         };
       }
       
