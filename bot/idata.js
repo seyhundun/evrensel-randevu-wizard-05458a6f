@@ -2927,79 +2927,124 @@ async function bookEarliestAppointment(page, account) {
     const ss2 = await takeScreenshotBase64(page);
     await idataLog("appt_date_picked", `📅 Takvimden tarih seçildi: ${dateSelected.selected ? `Gün ${dateSelected.day}` : "Manuel"} | Hesap: ${account.email}`, ss2);
 
-    // ===== STEP 4: Tarih & Saat "Seçiniz" alanlarını doldur =====
-    console.log("  [BOOK] Step 4: Tarih/Saat seçimi kontrol ediliyor...");
+    // ===== STEP 4: Randevu Tarihi & Saat seçimi =====
+    // Ekran: İki input (Randevu Tarihinizi Seçiniz + Seyahat Başlangıç Tarihi) + alt kısımda Tarih: Seçiniz / Saat: Seçiniz
+    // Tarih seçilince altında saat butonları (ör: "⏰ 08:00") belirir
+    console.log("  [BOOK] Step 4: Randevu tarihi input'una tıklanarak tarih seçiliyor...");
     await delay(1000, 2000);
 
-    // "Tarih: Seçiniz" linkine tıkla
-    const tarihSecimResult = await page.evaluate(() => {
-      const body = (document.body?.innerText || "");
-      const hasTarihSeciniz = body.includes("Tarih: Seçiniz") || body.includes("Tarih:  Seçiniz");
-      const hasSaatSeciniz = body.includes("Saat: Seçiniz") || body.includes("Saat:  Seçiniz");
-      
-      // "Seçiniz" linklerini bul
-      const links = Array.from(document.querySelectorAll("a, span, button, div"));
-      const secinizLinks = links.filter(el => {
-        const text = (el.innerText || el.textContent || "").trim();
-        return text === "Seçiniz";
+    // 4a: "Randevu Tarihinizi Seçiniz" input alanına tıklayıp takvim aç
+    const randevuInputClicked = await page.evaluate(() => {
+      const inputs = Array.from(document.querySelectorAll("input"));
+      const randevuInput = inputs.find(inp => {
+        const ph = (inp.placeholder || "").toLowerCase();
+        return ph.includes("randevu tarih") || ph.includes("randevu tarihinizi");
       });
-      
-      let tarihClicked = false;
-      let saatClicked = false;
-      
-      // Tarih "Seçiniz" — "Tarih:" kelimesinden sonraki ilk Seçiniz
-      for (const link of secinizLinks) {
-        const prevText = (link.previousSibling?.textContent || link.parentElement?.innerText || "").toLowerCase();
-        if (prevText.includes("tarih") && !tarihClicked) {
-          link.click();
-          tarihClicked = true;
-          continue;
+      if (randevuInput) {
+        // Input'un yanındaki takvim ikonunu bul
+        const parent = randevuInput.closest(".input-group, .form-group, div");
+        if (parent) {
+          const icon = parent.querySelector(".input-group-addon, .input-group-append, .input-group-text, span[class*='calendar'], i[class*='calendar'], .glyphicon-calendar, .fa-calendar");
+          if (icon) { icon.click(); return { clicked: true, method: "icon" }; }
         }
-        if (prevText.includes("saat") && !saatClicked) {
-          link.click();
-          saatClicked = true;
+        randevuInput.click();
+        randevuInput.focus();
+        return { clicked: true, method: "input_click" };
+      }
+      // Fallback: ilk takvim ikonunu tıkla
+      const icon = document.querySelector(".input-group-addon, .glyphicon-calendar, .fa-calendar, [class*='calendar']");
+      if (icon) { icon.click(); return { clicked: true, method: "fallback_icon" }; }
+      return { clicked: false };
+    });
+    console.log(`  [BOOK] Randevu input: ${JSON.stringify(randevuInputClicked)}`);
+    await delay(2000, 3000);
+
+    // 4b: Takvimden ilk müsait yeşil günü seç (yeşil = müsait, kırmızı = dolu)
+    const calDatePick = await page.evaluate((tDay) => {
+      const calContainers = document.querySelectorAll(
+        ".datepicker, .datepicker-dropdown, .bootstrap-datetimepicker-widget, " +
+        ".datepicker-days, .flatpickr-calendar, .ui-datepicker, " +
+        "[class*='datepicker'], [class*='calendar'], .picker-open, table.table-condensed"
+      );
+      let clickableDays = [];
+      for (const cal of calContainers) {
+        const style = window.getComputedStyle(cal);
+        if (style.display === "none" || style.visibility === "hidden") continue;
+        const days = cal.querySelectorAll("td:not(.disabled):not(.off)");
+        for (const d of days) {
+          const text = (d.innerText || d.textContent || "").trim();
+          if (/^\d{1,2}$/.test(text) && !d.classList.contains("disabled") && !d.classList.contains("old")) {
+            // Yeşil arka planlı günleri tercih et (müsait olanlar)
+            const bgColor = window.getComputedStyle(d).backgroundColor;
+            const isGreen = bgColor && (bgColor.includes("0, 128") || bgColor.includes("40, 167") || bgColor.includes("76, 175") || bgColor.includes("success") || d.classList.contains("bg-success") || d.style.backgroundColor?.includes("green"));
+            clickableDays.push({ el: d, day: parseInt(text), isGreen });
+          }
+        }
+      }
+      // Yeşil günleri öncelikle seç
+      const greenDays = clickableDays.filter(d => d.isGreen);
+      const pool = greenDays.length > 0 ? greenDays : clickableDays;
+      
+      if (pool.length > 0) {
+        let target = null;
+        if (tDay) target = pool.find(d => d.day === tDay);
+        if (!target) target = pool[0]; // En erken günü seç
+        target.el.click();
+        return { selected: true, day: target.day, totalDays: clickableDays.length, greenCount: greenDays.length };
+      }
+      return { selected: false, calCount: calContainers.length };
+    }, targetDay);
+    console.log(`  [BOOK] Takvim tarih seçimi: ${JSON.stringify(calDatePick)}`);
+    await delay(2000, 3000);
+
+    const ss_date = await takeScreenshotBase64(page);
+    await idataLog("appt_date_picked", `📅 Takvimden tarih seçildi: ${calDatePick.selected ? `Gün ${calDatePick.day} (${calDatePick.greenCount} yeşil gün)` : "Seçilemedi"} | Hesap: ${account.email}`, ss_date);
+
+    // 4c: Saat butonuna tıkla (ör: "⏰ 08:00" gibi butonlar beliriyor)
+    console.log("  [BOOK] Step 4c: Saat butonu aranıyor...");
+    await delay(1500, 2500);
+
+    const timeButtonResult = await page.evaluate(() => {
+      // Saat butonları genelde "08:00", "09:00" gibi metinlerle kırmızı/turuncu buton olarak çıkıyor
+      const candidates = Array.from(document.querySelectorAll("a, button, span, div, li"));
+      const timeButtons = [];
+      for (const el of candidates) {
+        const text = (el.innerText || el.textContent || "").trim();
+        // "08:00" veya "⏰ 08:00" veya "09:30" formatı
+        const timeMatch = text.match(/(\d{2}:\d{2})/);
+        if (timeMatch) {
+          const style = window.getComputedStyle(el);
+          const isVisible = style.display !== "none" && style.visibility !== "hidden" && el.offsetParent !== null;
+          if (isVisible && el.offsetHeight > 10) {
+            timeButtons.push({ el, time: timeMatch[1], text });
+          }
         }
       }
       
-      // Select dropdown'lar
+      if (timeButtons.length > 0) {
+        // İlk (en erken) saati seç
+        timeButtons[0].el.click();
+        return { clicked: true, time: timeButtons[0].time, totalSlots: timeButtons.length };
+      }
+      
+      // Fallback: select dropdown ile saat seçimi
       const selects = Array.from(document.querySelectorAll("select"));
       for (const sel of selects) {
         const labelText = (sel.closest("div, label")?.innerText || sel.name || sel.id || "").toLowerCase();
-        if ((labelText.includes("tarih") && !labelText.includes("seyahat")) && sel.options.length > 1 && !tarihClicked) {
+        if (labelText.includes("saat") && sel.options.length > 1) {
           sel.selectedIndex = 1;
           sel.dispatchEvent(new Event("change", { bubbles: true }));
-          tarihClicked = true;
-        }
-        if (labelText.includes("saat") && sel.options.length > 1 && !saatClicked) {
-          sel.selectedIndex = 1;
-          sel.dispatchEvent(new Event("change", { bubbles: true }));
-          saatClicked = true;
+          return { clicked: true, time: sel.options[1]?.text || "?", method: "select" };
         }
       }
       
-      return { tarihClicked, saatClicked, hasTarihSeciniz, hasSaatSeciniz, selectCount: selects.length, secinizCount: secinizLinks.length };
+      return { clicked: false, timeBtnCount: timeButtons.length };
     });
-
-    console.log(`  [BOOK] Tarih/Saat seçim: ${JSON.stringify(tarihSecimResult)}`);
-    
-    if (tarihSecimResult.tarihClicked) {
-      await delay(2000, 3000);
-      // Saat seçimi tarih seçildikten sonra aktif olabilir
-      await page.evaluate(() => {
-        const selects = Array.from(document.querySelectorAll("select"));
-        for (const sel of selects) {
-          const labelText = (sel.closest("div, label")?.innerText || sel.name || sel.id || "").toLowerCase();
-          if (labelText.includes("saat") && sel.options.length > 1) {
-            sel.selectedIndex = 1;
-            sel.dispatchEvent(new Event("change", { bubbles: true }));
-          }
-        }
-      });
-      await delay(1500, 2500);
-    }
+    console.log(`  [BOOK] Saat seçimi: ${JSON.stringify(timeButtonResult)}`);
+    await delay(2000, 3000);
 
     const ss3 = await takeScreenshotBase64(page);
-    await idataLog("appt_time_selection", `⏰ Tarih/Saat durumu: tarih=${tarihSecimResult.tarihClicked} saat=${tarihSecimResult.saatClicked} | Hesap: ${account.email}`, ss3);
+    await idataLog("appt_time_selection", `⏰ Saat seçimi: ${timeButtonResult.clicked ? timeButtonResult.time : "seçilemedi"} (${timeButtonResult.totalSlots || 0} slot) | Hesap: ${account.email}`, ss3);
 
     // ===== STEP 5: İLERİ butonuna tıkla (TARİH sayfasından çık) =====
     console.log("  [BOOK] Step 5: İLERİ butonuna tıklanıyor (tarih sayfası)...");
@@ -3039,7 +3084,8 @@ async function bookEarliestAppointment(page, account) {
     }
 
     // ===== STEP 6+: Sonraki sayfaları döngüyle işle =====
-    const MAX_PAGES = 5;
+    // Akış: TARİH → Ek Hizmetlerx (bilgi) → EK HİZMETLER (checkbox'lar) → Popup Tamam → ÖDEME İŞLEMLERİ (fatura+sözleşme) → Kredi kartı sayfası
+    const MAX_PAGES = 8;
     for (let pageIdx = 0; pageIdx < MAX_PAGES; pageIdx++) {
       console.log(`  [BOOK] Step 6.${pageIdx}: Sayfa analiz ediliyor...`);
       
@@ -3047,9 +3093,10 @@ async function bookEarliestAppointment(page, account) {
       const pageState = await page.evaluate(() => {
         const body = (document.body?.innerText || "");
         const lower = body.toLowerCase();
+        const checkboxes = Array.from(document.querySelectorAll('input[type="checkbox"]'));
         return {
           url: window.location.href,
-          bodyPreview: body.substring(0, 1500),
+          bodyPreview: body.substring(0, 2000),
           hasIleri: !!Array.from(document.querySelectorAll('a, button, input')).find(el => {
             const txt = (el.innerText || el.value || "").trim().toUpperCase();
             return txt === "İLERİ" || txt === "ILERI";
@@ -3058,50 +3105,183 @@ async function bookEarliestAppointment(page, account) {
             const txt = (el.innerText || el.value || "").trim().toUpperCase();
             return txt.includes("ONAYLA") || txt.includes("CONFIRM") || txt.includes("TAMAMLA") || txt.includes("KAYDET");
           }),
-          hasPayment: lower.includes("ödeme") || lower.includes("payment") || lower.includes("kredi kartı"),
-          hasTravelDate: lower.includes("seyahat başlangıç"),
+          hasOdemeYap: !!Array.from(document.querySelectorAll('a, button, input')).find(el => {
+            const txt = (el.innerText || el.value || "").trim().toUpperCase();
+            return txt.includes("ÖDEME YAP") || txt.includes("ODEME YAP");
+          }),
+          hasPayment: lower.includes("ödeme") || lower.includes("payment") || lower.includes("kredi kartı") || lower.includes("banka"),
+          hasEkHizmetler: lower.includes("ek hizmetler"),
+          hasFatura: lower.includes("fatura bilgileri") || lower.includes("fatura bil"),
+          hasSozlesme: lower.includes("okudum") || lower.includes("kabul ediyorum"),
+          hasKrediKarti: lower.includes("bankamatik kart") || lower.includes("kredi kartı") || lower.includes("kart numarası") || lower.includes("cvv"),
           hasError: lower.includes("hata") || lower.includes("error"),
           success: lower.includes("başarılı") || lower.includes("randevunuz oluşturulmuştur") || lower.includes("onaylandı") || lower.includes("tamamlandı"),
+          checkboxCount: checkboxes.length,
           hasSelectInputs: document.querySelectorAll("select").length,
         };
       });
 
-      await idataLog(`appt_page_${pageIdx}`, `Sayfa ${pageIdx} | URL: ${pageState.url} | İleri: ${pageState.hasIleri} | Onayla: ${pageState.hasOnayla} | Ödeme: ${pageState.hasPayment} | Hesap: ${account.email}\n${pageState.bodyPreview.substring(0, 500)}`, ssPage);
+      await idataLog(`appt_page_${pageIdx}`, `Sayfa ${pageIdx} | URL: ${pageState.url} | İleri: ${pageState.hasIleri} | Ödeme: ${pageState.hasPayment} | EkHizmet: ${pageState.hasEkHizmetler} | Fatura: ${pageState.hasFatura} | KrediKartı: ${pageState.hasKrediKarti} | Checkbox: ${pageState.checkboxCount} | Hesap: ${account.email}\n${pageState.bodyPreview.substring(0, 500)}`, ssPage);
 
-      // Başarılı
+      // ===== Başarılı =====
       if (pageState.success) {
         startAlarm();
         await idataLog("appt_booked", `🎉 RANDEVU ALINDI! | Hesap: ${account.email}`, ssPage);
-        return { success: true, date: dateSelected.day || "?" };
+        return { success: true, date: calDatePick.day || dateSelected?.day || "?" };
       }
 
-      // Hata durumu
-      if (pageState.hasError && !pageState.hasIleri && !pageState.hasOnayla) {
-        return { success: false, error: "Hata sayfası", partial: true };
-      }
-
-      // Ödeme sayfası — durdurup bildir
-      if (pageState.hasPayment) {
+      // ===== KREDİ KARTI SAYFASI — DUR! =====
+      if (pageState.hasKrediKarti) {
         startAlarm();
-        await idataLog("appt_payment_page", `💳 ÖDEME SAYFASINA ULAŞILDI! Manuel ödeme gerekli. | Hesap: ${account.email}`, ssPage);
-        return { success: true, date: dateSelected.day || "?", needsPayment: true };
+        await idataLog("appt_payment_page", `💳 KREDİ KARTI SAYFASINA ULAŞILDI! Manuel ödeme gerekli. | Hesap: ${account.email}`, ssPage);
+        return { success: true, date: calDatePick.day || dateSelected?.day || "?", needsPayment: true };
       }
 
-      // Select/dropdown'ları otomatik doldur
-      if (pageState.hasSelectInputs > 0) {
+      // ===== ÖDEME İŞLEMLERİ sayfası (Fatura + Sözleşme onayları) =====
+      if (pageState.hasFatura && pageState.hasSozlesme && pageState.hasOdemeYap) {
+        console.log(`  [BOOK] 💳 ÖDEME sayfası tespit edildi — fatura bilgileri dolduruluyor...`);
+        
+        // Fatura bilgilerini doldur (Bireysel seçili, şehir/ilçe/adres)
+        await page.evaluate((acc) => {
+          // Bireysel radio zaten seçili olmalı
+          const radios = Array.from(document.querySelectorAll('input[type="radio"]'));
+          const bireyselRadio = radios.find(r => {
+            const label = r.closest("label")?.innerText || r.parentElement?.innerText || "";
+            return label.toLowerCase().includes("bireysel");
+          });
+          if (bireyselRadio && !bireyselRadio.checked) bireyselRadio.click();
+
+          // Şehir select (Gaziantep vb.)
+          if (acc.invoice_city || acc.residence_city) {
+            const cityVal = acc.invoice_city || acc.residence_city;
+            const selects = Array.from(document.querySelectorAll("select"));
+            for (const sel of selects) {
+              for (const opt of sel.options) {
+                if (opt.text.toLowerCase().includes(cityVal.toLowerCase())) {
+                  sel.value = opt.value;
+                  sel.dispatchEvent(new Event("change", { bubbles: true }));
+                  break;
+                }
+              }
+            }
+          }
+        }, account);
+        await delay(1500, 2500);
+
+        // İlçe select (şehir seçildikten sonra yüklenir)
+        if (account.invoice_district) {
+          await page.evaluate((district) => {
+            const selects = Array.from(document.querySelectorAll("select"));
+            // İlçe genellikle 2. select
+            for (const sel of selects) {
+              for (const opt of sel.options) {
+                if (opt.text.toLowerCase().includes(district.toLowerCase())) {
+                  sel.value = opt.value;
+                  sel.dispatchEvent(new Event("change", { bubbles: true }));
+                  break;
+                }
+              }
+            }
+          }, account.invoice_district);
+          await delay(1000, 2000);
+        }
+
+        // Adres input
+        if (account.invoice_address) {
+          await page.evaluate((addr) => {
+            const inputs = Array.from(document.querySelectorAll("input[type='text'], textarea"));
+            // Adres alanı genellikle "adres" placeholder veya sonuncu uzun input
+            const addrInput = inputs.find(inp => {
+              const ph = (inp.placeholder || "").toLowerCase();
+              const name = (inp.name || "").toLowerCase();
+              return ph.includes("adres") || name.includes("adres") || name.includes("address");
+            }) || inputs[inputs.length - 1];
+            if (addrInput) {
+              addrInput.value = "";
+              addrInput.focus();
+              addrInput.value = addr;
+              addrInput.dispatchEvent(new Event("input", { bubbles: true }));
+              addrInput.dispatchEvent(new Event("change", { bubbles: true }));
+              addrInput.dispatchEvent(new Event("blur", { bubbles: true }));
+            }
+          }, account.invoice_address);
+          await delay(500, 1000);
+        }
+
+        // Sözleşme checkbox'larını işaretle (Okudum anladım kabul ediyorum x2 + KVKK)
+        console.log(`  [BOOK] Sözleşme checkbox'ları işaretleniyor...`);
         await page.evaluate(() => {
-          const selects = Array.from(document.querySelectorAll("select"));
-          for (const sel of selects) {
-            if (sel.selectedIndex === 0 && sel.options.length > 1) {
-              sel.selectedIndex = 1;
-              sel.dispatchEvent(new Event("change", { bubbles: true }));
+          const checkboxes = Array.from(document.querySelectorAll('input[type="checkbox"]'));
+          for (const cb of checkboxes) {
+            if (!cb.checked) {
+              cb.checked = true;
+              cb.dispatchEvent(new Event("change", { bubbles: true }));
+              cb.dispatchEvent(new Event("click", { bubbles: true }));
+              cb.click();
             }
           }
         });
-        await delay(1000, 2000);
+        await delay(1500, 2500);
+
+        const ssFatura = await takeScreenshotBase64(page);
+        await idataLog("appt_fatura_filled", `📝 Fatura bilgileri dolduruldu, sözleşmeler onaylandı | Hesap: ${account.email}`, ssFatura);
+
+        // ÖDEME YAP butonuna tıkla
+        console.log(`  [BOOK] ÖDEME YAP butonuna tıklanıyor...`);
+        await page.evaluate(() => {
+          const candidates = Array.from(document.querySelectorAll('a, button, input[type="submit"], input[type="button"]'));
+          const btn = candidates.find(el => {
+            const txt = (el.innerText || el.value || el.textContent || "").trim().toUpperCase();
+            return txt.includes("ÖDEME YAP") || txt.includes("ODEME YAP");
+          });
+          if (btn) {
+            if (btn.disabled) btn.disabled = false;
+            btn.click();
+          }
+        });
+        await delay(5000, 8000);
+
+        // Popup kontrolü
+        await page.evaluate(() => {
+          const closeButtons = document.querySelectorAll('.swal2-confirm, .swal2-close, .modal .btn, button');
+          for (const btn of closeButtons) {
+            const txt = (btn.innerText || "").trim().toUpperCase();
+            if (txt === "TAMAM" || txt === "OK" || txt === "KAPAT" || txt === "EVET") { btn.click(); break; }
+          }
+        });
+        await delay(3000, 5000);
+        continue; // Bir sonraki sayfa (kredi kartı sayfası olmalı)
       }
 
-      // Onay butonu varsa tıkla
+      // ===== EK HİZMETLER sayfası — checkbox'ları İŞARETLEME, direkt İLERİ =====
+      if (pageState.hasEkHizmetler && pageState.checkboxCount > 0) {
+        console.log(`  [BOOK] Ek Hizmetler sayfası — ${pageState.checkboxCount} checkbox var, hiçbiri işaretlenmeyecek, İLERİ tıklanıyor...`);
+        // Tüm checkbox'ların işaretsiz olduğundan emin ol
+        await page.evaluate(() => {
+          const checkboxes = Array.from(document.querySelectorAll('input[type="checkbox"]'));
+          for (const cb of checkboxes) {
+            if (cb.checked) {
+              cb.checked = false;
+              cb.dispatchEvent(new Event("change", { bubbles: true }));
+            }
+          }
+        });
+        await delay(500, 1000);
+      }
+
+      // ===== Hata durumu =====
+      if (pageState.hasError && !pageState.hasIleri && !pageState.hasOnayla && !pageState.hasOdemeYap) {
+        return { success: false, error: "Hata sayfası", partial: true };
+      }
+
+      // ===== Ödeme sayfası (genel) — durdurup bildir =====
+      if (pageState.hasPayment && !pageState.hasIleri && !pageState.hasEkHizmetler) {
+        startAlarm();
+        await idataLog("appt_payment_page", `💳 ÖDEME SAYFASINA ULAŞILDI! | Hesap: ${account.email}`, ssPage);
+        return { success: true, date: calDatePick.day || dateSelected?.day || "?", needsPayment: true };
+      }
+
+      // ===== Onay butonu varsa tıkla =====
       if (pageState.hasOnayla) {
         console.log(`  [BOOK] 🟢 Onay butonu tıklanıyor...`);
         await page.evaluate(() => {
@@ -3123,10 +3303,10 @@ async function bookEarliestAppointment(page, account) {
           }
         });
         await delay(2000, 3000);
-        continue; // Sonraki sayfa analizi
+        continue;
       }
 
-      // İLERİ butonu varsa tıkla
+      // ===== İLERİ butonu varsa tıkla =====
       if (pageState.hasIleri) {
         console.log(`  [BOOK] ➡ İLERİ butonu tıklanıyor (sayfa ${pageIdx})...`);
         await page.evaluate(() => {
@@ -3139,9 +3319,9 @@ async function bookEarliestAppointment(page, account) {
         });
         await delay(3000, 5000);
         
-        // Popup kapat
+        // Popup kapat (ör: "Başvuru Sürecini Kolaylaştırmayı Unutma" popup'ı)
         await page.evaluate(() => {
-          const closeButtons = document.querySelectorAll('.swal2-confirm, .swal2-close, button');
+          const closeButtons = document.querySelectorAll('.swal2-confirm, .swal2-close, .modal .btn, button, a');
           for (const btn of closeButtons) {
             const txt = (btn.innerText || "").trim().toUpperCase();
             if (txt === "TAMAM" || txt === "OK" || txt === "KAPAT" || txt === "EVET") { btn.click(); break; }
