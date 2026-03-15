@@ -591,6 +591,15 @@ async function waitForLoginFormAfterQueue(page, loginUrl) {
       pageState.body.includes("oturumunuzun süresi") ||
       (pageState.body.includes("oturum") && pageState.body.includes("geçersiz"));
 
+    // VFS API JSON hata yanıtları (403201, 403102 vb.)
+    const isApiError =
+      pageState.body.includes('"code"') && (
+        pageState.body.includes("403201") ||
+        pageState.body.includes("403102") ||
+        pageState.body.includes("403") ||
+        pageState.body.includes("401")
+      ) && pageState.body.length < 500; // JSON yanıt genelde kısa olur
+
     if (notFoundLike || sessionExpiredLike) {
       notFoundRecoveries += 1;
       console.log(`  [QUEUE] ⚠ Not-found/session sayfasına düştü (${notFoundRecoveries}/3), login sayfasına dönülüyor...`);
