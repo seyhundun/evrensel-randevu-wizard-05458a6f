@@ -3389,14 +3389,12 @@ async function bookEarliestAppointment(page, account) {
       const selectedCalendar = candidateCalendars[0];
       const allDays = selectedCalendar.days;
 
-      const greenDays = allDays.filter(d => d.isGreen && !d.isRed).sort((a, b) => a.day - b.day);
-      const clickableDays = allDays.filter(d => !d.isRed && !d.isYellow && (d.hasLink || d.isGreen)).sort((a, b) => a.day - b.day);
-      const pool = greenDays.length > 0 ? greenDays : clickableDays;
+      const greenDays = allDays.filter(d => d.isGreen && !d.isRed && !d.isYellow).sort((a, b) => a.day - b.day);
 
-      if (pool.length > 0) {
+      if (greenDays.length > 0) {
         let target = null;
-        if (tDay) target = pool.find(d => d.day === tDay);
-        if (!target) target = pool.length > 1 ? pool[1] : pool[0];
+        if (tDay) target = greenDays.find(d => d.day === tDay);
+        if (!target) target = greenDays[0];
 
         return {
           found: true,
@@ -3415,7 +3413,7 @@ async function bookEarliestAppointment(page, account) {
         };
       }
 
-      return { found: false, totalDays: allDays.length, reason: "no_days_in_pool" };
+      return { found: false, totalDays: allDays.length, reason: "no_green_days" };
     }, targetDay, calIconClicked?.inputX ?? null, calIconClicked?.inputY ?? null);
 
     console.log(`  [BOOK] Tarih bilgisi: ${JSON.stringify(dateInfo)}`);
