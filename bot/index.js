@@ -600,7 +600,7 @@ async function waitForLoginFormAfterQueue(page, loginUrl) {
         pageState.body.includes("401")
       ) && pageState.body.length < 500; // JSON yanıt genelde kısa olur
 
-    if (notFoundLike || sessionExpiredLike) {
+    if (notFoundLike || sessionExpiredLike || isApiError) {
       notFoundRecoveries += 1;
       console.log(`  [QUEUE] ⚠ Not-found/session sayfasına düştü (${notFoundRecoveries}/3), login sayfasına dönülüyor...`);
 
