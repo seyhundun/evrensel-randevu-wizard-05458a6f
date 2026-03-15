@@ -3553,7 +3553,11 @@ async function bookEarliestAppointment(page, account) {
 
       await page.evaluate((val) => {
         const inputs = Array.from(document.querySelectorAll("input"));
+        // iDATA: calendarinput, flightDate class'larını öncelikle hedefle
         const dateInput = inputs.find(inp => {
+          const cls = (inp.className || "").toLowerCase();
+          return cls.includes("calendarinput") || cls.includes("flightdate");
+        }) || inputs.find(inp => {
           const ph = (inp.placeholder || "").toLowerCase();
           const nm = (inp.name || "").toLowerCase();
           return ph.includes("randevu") || ph.includes("tarih") || nm.includes("date") || nm.includes("tarih");
