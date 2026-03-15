@@ -105,10 +105,10 @@ echo "✅ Xvfb ekranları başlatıldı"`}
           <CopyBlock
             label="2. VNC & noVNC başlat"
             description="x11vnc → websockify → noVNC (VFS: 6080, iDATA: 6081)"
-            command={`x11vnc -display :99 -forever -nopw -shared -rfbport 5999 -bg -o /dev/null
-x11vnc -display :98 -forever -nopw -shared -rfbport 5998 -bg -o /dev/null
-websockify --daemon --web /usr/share/novnc 6080 localhost:5999
-websockify --daemon --web /usr/share/novnc 6081 localhost:5998
+            command={`x11vnc -display :99 -forever -shared -rfbport 5900 -rfbauth /root/.vnc/passwd -noxdamage -bg -o /dev/null
+x11vnc -display :98 -forever -shared -rfbport 5901 -rfbauth /root/.vnc/passwd -noxdamage -bg -o /dev/null
+websockify --daemon --web /usr/share/novnc 6080 localhost:5900
+websockify --daemon --web /usr/share/novnc 6081 localhost:5901
 echo "✅ VNC/noVNC başlatıldı"`}
           />
           <CopyBlock
@@ -150,10 +150,10 @@ Xvfb :98 -screen 0 1920x1080x24 &
 sleep 1
 
 # VNC & noVNC
-x11vnc -display :99 -forever -nopw -shared -rfbport 5999 -bg -o /dev/null
-x11vnc -display :98 -forever -nopw -shared -rfbport 5998 -bg -o /dev/null
-websockify --daemon --web /usr/share/novnc 6080 localhost:5999
-websockify --daemon --web /usr/share/novnc 6081 localhost:5998
+x11vnc -display :99 -forever -shared -rfbport 5900 -rfbauth /root/.vnc/passwd -noxdamage -bg -o /dev/null
+x11vnc -display :98 -forever -shared -rfbport 5901 -rfbauth /root/.vnc/passwd -noxdamage -bg -o /dev/null
+websockify --daemon --web /usr/share/novnc 6080 localhost:5900
+websockify --daemon --web /usr/share/novnc 6081 localhost:5901
 
 # ecosystem.config.cjs oluştur
 cat > /root/vfs-bot/bot/ecosystem.config.cjs << 'EOFCONFIG'
@@ -249,8 +249,8 @@ sleep 2
 
 Xvfb :98 -screen 0 1920x1080x24 &
 sleep 1
-x11vnc -display :98 -forever -nopw -shared -rfbport 5998 -bg -o /dev/null
-websockify --daemon --web /usr/share/novnc 6081 localhost:5998
+x11vnc -display :98 -forever -shared -rfbport 5901 -rfbauth /root/.vnc/passwd -noxdamage -bg -o /dev/null
+websockify --daemon --web /usr/share/novnc 6081 localhost:5901
 
 pm2 restart idata-bot
 echo "✅ iDATA ekranı yeniden başlatıldı"`}
@@ -298,7 +298,7 @@ pm2 describe idata-bot | grep -A5 "env"`}
           />
           <CopyBlock
             label="Port kontrolü (VNC/noVNC)"
-            command={`ss -tlnp | grep -E "5999|5998|6080|6081"`}
+            command={`ss -tlnp | grep -E "5900|5901|6080|6081"`}
           />
           <CopyBlock
             label="Sunucu IP kontrolü"
