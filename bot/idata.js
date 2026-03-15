@@ -3826,6 +3826,20 @@ async function bookEarliestAppointment(page, account) {
         }
       }
 
+      if (!dateVerify.isActive) {
+        const slotProbe = await page.evaluate(() => {
+          const txt = (document.body?.innerText || "").replace(/\s+/g, " ");
+          const controls = Array.from(document.querySelectorAll("button, a, input[type='button'], input[type='submit'], .getdatebtnhour, li, span"));
+          const timeCount = controls.filter((el) => /\b\d{1,2}[:.]\d{2}\b/.test((el.innerText || el.textContent || el.value || "").trim())).length;
+          return { timeCount, hasSaatSeciniz: txt.includes("Saat: Seçiniz") || txt.includes("Saat : Seçiniz") };
+        });
+
+        if (slotProbe.timeCount > 0) {
+          dateVerify = { isActive: true, cls: `time-slots-visible:${slotProbe.timeCount}` };
+          console.log(`  [BOOK] Tarih doğrulama bypass: saat slotları görünüyor (${slotProbe.timeCount})`);
+        }
+      }
+
       dateSelected = {
         selected: !!dateVerify.isActive,
         day: dateInfo.day,
