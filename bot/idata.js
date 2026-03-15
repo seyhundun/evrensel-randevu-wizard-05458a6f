@@ -3446,7 +3446,7 @@ async function bookEarliestAppointment(page, account) {
             // Mümkünse 2. günü seç (ilk yeşili atla)
             const pick = pool.length > 1 ? pool[1] : pool[0];
             pick.el.click();
-            return { selected: true, day: pool[0].day, isGreen: pool[0].isGreen, remaining: pool.length - 1 };
+            return { selected: true, day: pick.day, isGreen: pick.isGreen, remaining: pool.length - 1 };
           }
           return { selected: false, remaining: 0 };
         }, skipDaysArr);
