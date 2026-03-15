@@ -3381,12 +3381,28 @@ async function bookEarliestAppointment(page, account) {
         const cls = (el.className || "").toLowerCase();
         if (cls.includes("btn-warning") || cls.includes("btn-orange") || cls.includes("active")) isOrange = true;
         
+        // ASP.NET postback bilgisi
+        const href = el.getAttribute("href") || "";
+        let postbackTarget = null, postbackArg = null;
+        const pbMatch = href.match(/__doPostBack\(['"](.*?)['"],\s*['"](.*?)['"]\)/);
+        if (pbMatch) { postbackTarget = pbMatch[1]; postbackArg = pbMatch[2]; }
+        // İçindeki <a> etiketinde de ara
+        if (!postbackTarget && el.tagName !== "A") {
+          const innerA = el.querySelector("a[href*='doPostBack'], a[href*='javascript'], a");
+          if (innerA) {
+            const aHref = innerA.getAttribute("href") || "";
+            const aPb = aHref.match(/__doPostBack\(['"](.*?)['"],\s*['"](.*?)['"]\)/);
+            if (aPb) { postbackTarget = aPb[1]; postbackArg = aPb[2]; }
+          }
+        }
+        
         const rect = el.getBoundingClientRect();
         timeButtons.push({ 
           time: timeMatch[1], isOrange, bgColor, 
           tag: el.tagName, cls: (el.className || "").substring(0, 100),
           x: rect.x + rect.width / 2, 
-          y: rect.y + rect.height / 2
+          y: rect.y + rect.height / 2,
+          postbackTarget, postbackArg
         });
       }
       
@@ -3395,7 +3411,7 @@ async function bookEarliestAppointment(page, account) {
       
       return { 
         found: !!target, target, totalSlots: timeButtons.length,
-        allSlots: timeButtons.map(t => ({ time: t.time, isOrange: t.isOrange, tag: t.tag }))
+        allSlots: timeButtons.map(t => ({ time: t.time, isOrange: t.isOrange, tag: t.tag, pb: !!t.postbackTarget }))
       };
     });
 
