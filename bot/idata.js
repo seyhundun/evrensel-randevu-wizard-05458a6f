@@ -3633,7 +3633,7 @@ async function bookEarliestAppointment(page, account) {
 
         await delay(500, 1000);
 
-        // ===== TAMAM'dan sonra yeniden tarih seç (yeşil günün ortasından) =====
+        // ===== TAMAM'dan sonra yeniden tarih seç (yeşil günün ortasından + postback) =====
         const retryDateInfo = await page.evaluate(() => {
           const calContainers = document.querySelectorAll(
             ".datepicker, .datepicker-dropdown, .bootstrap-datetimepicker-widget, " +
@@ -3658,9 +3658,18 @@ async function bookEarliestAppointment(page, account) {
                 isGreen = g > 100 && g > r * 1.3 && g > b * 1.3;
               }
               if (d.classList.contains("bg-success") || d.classList.contains("success")) isGreen = true;
-              const rect = d.getBoundingClientRect();
+              
+              // ASP.NET postback bilgisi
+              const innerLink = d.querySelector("a[href*='doPostBack'], a[href*='javascript'], a");
+              const postbackHref = innerLink ? (innerLink.getAttribute("href") || "") : "";
+              let postbackTarget = null, postbackArg = null;
+              const pbMatch = postbackHref.match(/__doPostBack\(['"](.*?)['"],\s*['"](.*?)['"]\)/);
+              if (pbMatch) { postbackTarget = pbMatch[1]; postbackArg = pbMatch[2]; }
+              
+              const clickableEl = innerLink || d;
+              const rect = clickableEl.getBoundingClientRect();
               if (rect.width > 0 && rect.height > 0) {
-                allDays.push({ day: dayNum, isGreen, x: rect.x + rect.width / 2, y: rect.y + rect.height / 2 });
+                allDays.push({ day: dayNum, isGreen, x: rect.x + rect.width / 2, y: rect.y + rect.height / 2, postbackTarget, postbackArg, hasLink: !!innerLink });
               }
             }
           }
@@ -3670,15 +3679,26 @@ async function bookEarliestAppointment(page, account) {
           if (pool.length > 0) {
             const idx = Math.floor(Math.random() * pool.length);
             const target = pool[idx];
-            return { found: true, day: target.day, x: target.x, y: target.y, greenCount: greenDays.length };
+            return { found: true, day: target.day, x: target.x, y: target.y, greenCount: greenDays.length, postbackTarget: target.postbackTarget, postbackArg: target.postbackArg, hasLink: target.hasLink };
           }
           return { found: false };
         });
 
         if (retryDateInfo.found) {
-          console.log(`  [BOOK] 📅 Retry tarih seçimi: Gün ${retryDateInfo.day} (${retryDateInfo.greenCount} yeşil)`);
+          console.log(`  [BOOK] 📅 Retry tarih seçimi: Gün ${retryDateInfo.day} (${retryDateInfo.greenCount} yeşil, postback=${!!retryDateInfo.postbackTarget})`);
           await humanClick(page, retryDateInfo.x, retryDateInfo.y, { preMovesNear: true });
           await delay(1500, 2500);
+          
+          // Postback fallback
+          if (retryDateInfo.postbackTarget) {
+            await page.evaluate((target, arg) => {
+              if (typeof window.__doPostBack === "function") {
+                window.__doPostBack(target, arg);
+              }
+            }, retryDateInfo.postbackTarget, retryDateInfo.postbackArg || "");
+            console.log(`  [BOOK] ✅ Retry tarih __doPostBack çağrıldı`);
+            await delay(1500, 2500);
+          }
         } else {
           console.log(`  [BOOK] ⚠️ Retry'da takvimde gün bulunamadı`);
         }
