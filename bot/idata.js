@@ -4057,9 +4057,11 @@ async function bookEarliestAppointment(page, account) {
       const pageState = await page.evaluate(() => {
         const body = (document.body?.innerText || "");
         const lower = body.toLowerCase();
+        const url = window.location.href;
+        const urlLower = url.toLowerCase();
         const checkboxes = Array.from(document.querySelectorAll('input[type="checkbox"]'));
         return {
-          url: window.location.href,
+          url,
           bodyPreview: body.substring(0, 2000),
           hasIleri: !!Array.from(document.querySelectorAll('a, button, input')).find(el => {
             const txt = (el.innerText || el.value || "").trim().toUpperCase();
@@ -4079,6 +4081,7 @@ async function bookEarliestAppointment(page, account) {
           hasSozlesme: lower.includes("okudum") || lower.includes("kabul ediyorum"),
           hasKrediKarti: lower.includes("bankamatik kart") || lower.includes("kredi kartı") || lower.includes("kart numarası") || lower.includes("cvv"),
           hasDateWarning: lower.includes("bir randevu tarihi ve saati seçiniz") || lower.includes("lütfen başka bir tarih seçin") || lower.includes("başka bir tarih seçin"),
+          hasDashboardHome: (urlLower.includes("/membership/dashboard") || lower.includes("duyurular")) && (lower.includes("randevu al") || lower.includes("randevu düzenleme")),
           hasError: lower.includes("hata") || lower.includes("error"),
           success: lower.includes("başarılı") || lower.includes("randevunuz oluşturulmuştur") || lower.includes("onaylandı") || lower.includes("tamamlandı"),
           checkboxCount: checkboxes.length,
