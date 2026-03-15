@@ -3215,6 +3215,8 @@ async function bookEarliestAppointment(page, account) {
     let dateSelected = { selected: false, day: 0, greenCount: 0, bgColor: "" };
     
     if (dateInfo.found) {
+      console.log(`  [BOOK] Tarih bilgisi: hasLink=${dateInfo.hasLink} postbackTarget=${dateInfo.postbackTarget} linkHref=${dateInfo.linkHref}`);
+      
       // İnsan taklidi: takvimde bezier mouse hareketleri yap + ortadan tıkla
       try {
         // Hedef güne insansı tıklama (bezier curve + pre-moves + mousedown/up)
@@ -3222,28 +3224,12 @@ async function bookEarliestAppointment(page, account) {
         console.log(`  [BOOK] ✅ HumanClick tarih: Gün ${dateInfo.day} (x:${Math.round(dateInfo.x)}, y:${Math.round(dateInfo.y)})`);
         dateSelected = { selected: true, day: dateInfo.day, isGreen: dateInfo.isGreen, greenCount: dateInfo.greenCount, bgColor: dateInfo.bgColor };
       } catch (mouseErr) {
-        console.log(`  [BOOK] Mouse.click tarih hata: ${mouseErr.message}, DOM click deneniyor...`);
-        // Fallback: DOM click
-        const domResult = await page.evaluate((dayNum) => {
-          const calContainers = document.querySelectorAll("[class*='datepicker'], [class*='calendar'], table.table-condensed");
-          for (const cal of calContainers) {
-            const tds = cal.querySelectorAll("td");
-            for (const d of tds) {
-              const text = (d.innerText || d.textContent || "").trim();
-              if (parseInt(text) === dayNum && !d.classList.contains("disabled") && !d.classList.contains("old")) {
-                d.click();
-                return true;
-              }
-            }
-          }
-          return false;
-        }, dateInfo.day);
-        dateSelected = { selected: domResult, day: dateInfo.day, isGreen: dateInfo.isGreen, greenCount: dateInfo.greenCount, bgColor: dateInfo.bgColor };
+        console.log(`  [BOOK] Mouse.click tarih hata: ${mouseErr.message}`);
       }
       
       await delay(1500, 2500);
       
-      // Doğrulama + element handle fallback
+      // ASP.NET postback doğrulaması — eğer seçim gerçekleşmediyse __doPostBack çağır
       const dateVerify = await page.evaluate((dayNum) => {
         const calContainers = document.querySelectorAll("[class*='datepicker'], [class*='calendar'], table.table-condensed");
         for (const cal of calContainers) {
@@ -3259,18 +3245,73 @@ async function bookEarliestAppointment(page, account) {
         return { isActive: false };
       }, dateInfo.day);
       
+      // Eğer hala aktif değilse, __doPostBack ile dene
+      if (!dateVerify.isActive && dateInfo.postbackTarget) {
+        console.log(`  [BOOK] Tarih aktif değil, __doPostBack çağrılıyor: ${dateInfo.postbackTarget}`);
+        await page.evaluate((target, arg) => {
+          if (typeof window.__doPostBack === "function") {
+            window.__doPostBack(target, arg);
+          }
+        }, dateInfo.postbackTarget, dateInfo.postbackArg || "");
+        await delay(2000, 3000);
+      }
+      
+      // Hala seçilmediyse — içindeki <a> etiketine tıkla
+      if (!dateVerify.isActive && dateInfo.hasLink) {
+        console.log("  [BOOK] Tarih aktif değil, inner <a> link'e tıklanıyor...");
+        await page.evaluate((dayNum) => {
+          const calContainers = document.querySelectorAll("[class*='datepicker'], [class*='calendar'], table.table-condensed");
+          for (const cal of calContainers) {
+            const tds = cal.querySelectorAll("td");
+            for (const d of tds) {
+              const text = (d.innerText || d.textContent || "").trim();
+              if (parseInt(text) === dayNum && !d.classList.contains("disabled") && !d.classList.contains("old")) {
+                const link = d.querySelector("a");
+                if (link) {
+                  link.click();
+                  return true;
+                }
+                d.click();
+                return true;
+              }
+            }
+          }
+          return false;
+        }, dateInfo.day);
+        await delay(2000, 3000);
+      }
+      
+      // Son fallback: element handle
       if (!dateVerify.isActive) {
         console.log("  [BOOK] Tarih aktif değil, element handle ile deneniyor...");
         try {
-          const tdElements = await page.$$("td");
-          for (const elHandle of tdElements) {
-            const elText = await page.evaluate(el => (el.innerText || el.textContent || "").trim(), elHandle);
-            if (parseInt(elText) === dateInfo.day) {
-              const isDisabled = await page.evaluate(el => el.classList.contains("disabled") || el.classList.contains("old"), elHandle);
-              if (!isDisabled) {
-                await elHandle.click();
-                console.log(`  [BOOK] ✅ Element handle tarih: Gün ${dateInfo.day}`);
-                break;
+          // Önce <a> etiketlerini dene (ASP.NET postback)
+          const linkHandles = await page.$$("td a[href*='doPostBack'], td a[href*='javascript'], td a");
+          for (const elHandle of linkHandles) {
+            const parentText = await page.evaluate(el => {
+              const td = el.closest("td");
+              return td ? (td.innerText || td.textContent || "").trim() : "";
+            }, elHandle);
+            if (parseInt(parentText) === dateInfo.day) {
+              await elHandle.click();
+              console.log(`  [BOOK] ✅ Element handle <a> tarih: Gün ${dateInfo.day}`);
+              dateSelected.selected = true;
+              break;
+            }
+          }
+          
+          // Eğer link bulunamadıysa td'ye tıkla
+          if (!dateSelected.selected) {
+            const tdElements = await page.$$("td");
+            for (const elHandle of tdElements) {
+              const elText = await page.evaluate(el => (el.innerText || el.textContent || "").trim(), elHandle);
+              if (parseInt(elText) === dateInfo.day) {
+                const isDisabled = await page.evaluate(el => el.classList.contains("disabled") || el.classList.contains("old"), elHandle);
+                if (!isDisabled) {
+                  await elHandle.click();
+                  console.log(`  [BOOK] ✅ Element handle td tarih: Gün ${dateInfo.day}`);
+                  break;
+                }
               }
             }
           }
