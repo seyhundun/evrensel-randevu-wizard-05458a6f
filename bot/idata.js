@@ -3870,8 +3870,8 @@ async function bookEarliestAppointment(page, account) {
 
     console.log(`  [BOOK] Tarih seçimi: ${JSON.stringify(dateSelected)}`);
 
-    if (!dateSelected.selected) {
-      // Takvim click seçimini doğrulayamadık — input fallback (seçilen güne öncelik ver)
+    if (!dateSelected.selected && dateInfo?.found) {
+      // Sadece yeşil olarak tespit edilen gün için input fallback uygula
       const headerText = await page.evaluate(() => {
         const header = document.querySelector(".datepicker-switch, .datepicker-days th.datepicker-switch, th.switch");
         return header ? (header.textContent || "").trim() : "";
@@ -3891,87 +3891,86 @@ async function bookEarliestAppointment(page, account) {
       const ym = headerText.match(/(\d{4})/);
       if (ym) headerYear = parseInt(ym[1]);
 
-      const fallbackDay = dateInfo?.found ? dateInfo.day : targetDay;
-      let dateStr;
+      const fallbackDay = dateInfo.day;
+      let dateStr = null;
       if (fallbackDay && headerMonth && headerYear) {
         dateStr = `${String(fallbackDay).padStart(2, "0")}-${String(headerMonth).padStart(2, "0")}-${headerYear}`;
       } else if (fallbackDay && targetMonth && targetYear) {
         dateStr = `${String(fallbackDay).padStart(2, "0")}-${String(targetMonth).padStart(2, "0")}-${targetYear}`;
-      } else if (targetDay && targetMonth && targetYear) {
-        dateStr = `${String(targetDay).padStart(2, "0")}-${String(targetMonth).padStart(2, "0")}-${targetYear}`;
-      } else {
-        const futureDate = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
-        dateStr = `${String(futureDate.getDate()).padStart(2, "0")}-${String(futureDate.getMonth() + 1).padStart(2, "0")}-${futureDate.getFullYear()}`;
       }
 
-      await page.evaluate((val) => {
-        const inputs = Array.from(document.querySelectorAll("input"));
-        const travelWords = ["seyahat", "gidiş", "gidis", "travel", "flight", "departure", "baslangic", "başlangıç"];
-        const apptWords = ["randevu", "appointment", "slot", "tarih"];
-        const hasWord = (txt, words) => words.some((w) => txt.includes(w));
+      if (dateStr) {
+        await page.evaluate((val) => {
+          const inputs = Array.from(document.querySelectorAll("input"));
+          const travelWords = ["seyahat", "gidiş", "gidis", "travel", "flight", "departure", "baslangic", "başlangıç"];
+          const apptWords = ["randevu", "appointment", "slot", "tarih"];
+          const hasWord = (txt, words) => words.some((w) => txt.includes(w));
 
-        const isVisible = (el) => {
-          const r = el.getBoundingClientRect();
-          const s = window.getComputedStyle(el);
-          return r.width > 0 && r.height > 0 && s.display !== "none" && s.visibility !== "hidden";
-        };
+          const isVisible = (el) => {
+            const r = el.getBoundingClientRect();
+            const s = window.getComputedStyle(el);
+            return r.width > 0 && r.height > 0 && s.display !== "none" && s.visibility !== "hidden";
+          };
 
-        const candidates = inputs
-          .filter(isVisible)
-          .map((inp) => {
-            const ph = (inp.placeholder || "").toLowerCase();
-            const nm = (inp.name || "").toLowerCase();
-            const id = (inp.id || "").toLowerCase();
-            const cls = (inp.className || "").toLowerCase();
-            const blob = `${ph} ${nm} ${id} ${cls}`;
+          const candidates = inputs
+            .filter(isVisible)
+            .map((inp) => {
+              const ph = (inp.placeholder || "").toLowerCase();
+              const nm = (inp.name || "").toLowerCase();
+              const id = (inp.id || "").toLowerCase();
+              const cls = (inp.className || "").toLowerCase();
+              const blob = `${ph} ${nm} ${id} ${cls}`;
 
-            const isDateLike = cls.includes("calendarinput") || cls.includes("flightdate") || cls.includes("datepicker") || ph.includes("tarih") || nm.includes("date") || nm.includes("tarih");
-            if (!isDateLike) return null;
+              const isDateLike = cls.includes("calendarinput") || cls.includes("flightdate") || cls.includes("datepicker") || ph.includes("tarih") || nm.includes("date") || nm.includes("tarih");
+              if (!isDateLike) return null;
 
-            const isTravel = hasWord(blob, travelWords);
-            const isAppt = hasWord(blob, apptWords) && !isTravel;
-            const rect = inp.getBoundingClientRect();
+              const isTravel = hasWord(blob, travelWords);
+              const isAppt = hasWord(blob, apptWords) && !isTravel;
+              const rect = inp.getBoundingClientRect();
 
-            let score = 0;
-            if (isAppt) score += 180;
-            if (ph.includes("randevu")) score += 220;
-            if (nm.includes("randevu") || id.includes("randevu")) score += 180;
-            if (isTravel) score -= 300;
-            if (!(inp.value || "").trim()) score += 60;
-            score += Math.floor(rect.y / 3);
+              let score = 0;
+              if (isAppt) score += 180;
+              if (ph.includes("randevu")) score += 220;
+              if (nm.includes("randevu") || id.includes("randevu")) score += 180;
+              if (isTravel) score -= 300;
+              if (!(inp.value || "").trim()) score += 60;
+              score += Math.floor(rect.y / 3);
 
-            return { inp, score, y: rect.y };
-          })
-          .filter(Boolean)
-          .sort((a, b) => b.score - a.score || b.y - a.y);
+              return { inp, score, y: rect.y };
+            })
+            .filter(Boolean)
+            .sort((a, b) => b.score - a.score || b.y - a.y);
 
-        const dateInput = candidates[0]?.inp || null;
-        if (!dateInput) return;
+          const dateInput = candidates[0]?.inp || null;
+          if (!dateInput) return;
 
-        const finalVal = val;
-        dateInput.value = "";
-        dateInput.focus();
-        const nativeSetter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, "value").set;
-        nativeSetter.call(dateInput, finalVal);
-        dateInput.dispatchEvent(new Event("input", { bubbles: true }));
-        dateInput.dispatchEvent(new Event("change", { bubbles: true }));
-        dateInput.dispatchEvent(new Event("blur", { bubbles: true }));
+          const finalVal = val;
+          dateInput.value = "";
+          dateInput.focus();
+          const nativeSetter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, "value").set;
+          nativeSetter.call(dateInput, finalVal);
+          dateInput.dispatchEvent(new Event("input", { bubbles: true }));
+          dateInput.dispatchEvent(new Event("change", { bubbles: true }));
+          dateInput.dispatchEvent(new Event("blur", { bubbles: true }));
 
-        if (typeof window.jQuery !== "undefined") {
-          try {
-            const parts = val.split("-");
-            const dateObj = new Date(parseInt(parts[2]), parseInt(parts[1]) - 1, parseInt(parts[0]));
-            window.jQuery(dateInput).datepicker("setDate", dateObj);
-            window.jQuery(dateInput).trigger("changeDate").trigger("change");
-          } catch (_) {
+          if (typeof window.jQuery !== "undefined") {
             try {
-              window.jQuery(dateInput).datepicker("update", finalVal);
-              window.jQuery(dateInput).trigger("changeDate");
-            } catch (__) {}
+              const parts = val.split("-");
+              const dateObj = new Date(parseInt(parts[2]), parseInt(parts[1]) - 1, parseInt(parts[0]));
+              window.jQuery(dateInput).datepicker("setDate", dateObj);
+              window.jQuery(dateInput).trigger("changeDate").trigger("change");
+            } catch (_) {
+              try {
+                window.jQuery(dateInput).datepicker("update", finalVal);
+                window.jQuery(dateInput).trigger("changeDate");
+              } catch (__) {}
+            }
           }
-        }
-      }, dateStr);
-      console.log(`  [BOOK] Manuel tarih girildi: ${dateStr}`);
+        }, dateStr);
+        console.log(`  [BOOK] Manuel tarih girildi (yeşil hedef): ${dateStr}`);
+      }
+    } else if (!dateSelected.selected) {
+      console.log("  [BOOK] Takvimde yeşil tarih bulunmadığı için manuel tarih zorlanmadı.");
     }
 
     await delay(2000, 3000);
