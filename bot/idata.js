@@ -3204,7 +3204,7 @@ async function bookEarliestAppointment(page, account) {
       if (pageState.hasPayment && !pageState.hasIleri && !pageState.hasEkHizmetler) {
         startAlarm();
         await idataLog("appt_payment_page", `💳 ÖDEME SAYFASINA ULAŞILDI! | Hesap: ${account.email}`, ssPage);
-        return { success: true, date: calDatePick.day || dateSelected?.day || "?", needsPayment: true };
+        return { success: true, date: dateSelected?.day || "?", needsPayment: true };
       }
 
       // ===== Onay butonu varsa tıkla =====
