@@ -3182,7 +3182,8 @@ async function bookEarliestAppointment(page, account) {
         for (const d of tds) {
           const text = (d.innerText || d.textContent || "").trim();
           if (!/^\d{1,2}$/.test(text)) continue;
-          if (d.classList.contains("disabled") || d.classList.contains("off") || d.classList.contains("old")) continue;
+          // iDATA uses disabled-day class with pointer-events:none
+          if (d.classList.contains("disabled") || d.classList.contains("disabled-day") || d.classList.contains("off") || d.classList.contains("old")) continue;
 
           const dayNum = parseInt(text);
           const bgColor = window.getComputedStyle(d).backgroundColor;
@@ -3197,6 +3198,9 @@ async function bookEarliestAppointment(page, account) {
             isYellow = r > 200 && g > 150 && b < 100;
           }
 
+          // iDATA specific: enabled-day = green, disabled-day = red
+          if (d.classList.contains("enabled-day")) isGreen = true;
+          if (d.classList.contains("disabled-day")) { isRed = true; isGreen = false; }
           if (d.classList.contains("bg-success") || d.classList.contains("success")) isGreen = true;
           if (d.classList.contains("bg-danger") || d.classList.contains("danger")) isRed = true;
           if (d.classList.contains("bg-warning") || d.classList.contains("warning") || d.classList.contains("today") || d.classList.contains("active")) isYellow = true;
