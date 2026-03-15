@@ -3287,13 +3287,57 @@ async function bookEarliestAppointment(page, account) {
       }
     }
     
-    // Yeşil günleri tespit et — doğru takvimi hedefle (input'a en yakın görünür takvim)
-    const dateInfo = await page.evaluate((tDay, anchorX, anchorY) => {
+    // Yeşil günleri tespit et — sadece whitelist içindeki açık tarihlerden seç
+    const dateInfo = await page.evaluate((targetNormalized, allowedDates, anchorX, anchorY) => {
       const calContainers = Array.from(document.querySelectorAll(
         ".datepicker, .datepicker-dropdown, .bootstrap-datetimepicker-widget, " +
         ".datepicker-days, .flatpickr-calendar, .ui-datepicker, " +
         "[class*='datepicker'], [class*='calendar'], .picker-open, table.table-condensed"
       ));
+
+      const allowedSet = new Set((allowedDates || []).filter(Boolean));
+      const monthMap = {
+        january: 1, february: 2, march: 3, april: 4, may: 5, june: 6, july: 7, august: 8, september: 9, october: 10, november: 11, december: 12,
+        ocak: 1, şubat: 2, subat: 2, mart: 3, nisan: 4, mayıs: 5, mayis: 5, haziran: 6, temmuz: 7, ağustos: 8, agustos: 8, eylül: 9, eylul: 9, ekim: 10, kasım: 11, kasim: 11, aralık: 12, aralik: 12,
+      };
+
+      const parseMonthYear = (text) => {
+        const raw = String(text || "").trim().toLowerCase();
+        if (!raw) return { month: null, year: null, headerText: "" };
+        const yearMatch = raw.match(/(20\d{2})/);
+        let month = null;
+        for (const [name, num] of Object.entries(monthMap)) {
+          if (raw.includes(name)) {
+            month = num;
+            break;
+          }
+        }
+        return {
+          month,
+          year: yearMatch ? parseInt(yearMatch[1], 10) : null,
+          headerText: raw,
+        };
+      };
+
+      const pickCalendarHeader = (cal) => {
+        const localHeaders = Array.from(cal.querySelectorAll(
+          ".datepicker-switch, .picker-switch, .datepicker th.switch, .ui-datepicker-title, caption, th"
+        ));
+        for (const node of localHeaders) {
+          const parsed = parseMonthYear(node.innerText || node.textContent || "");
+          if (parsed.month && parsed.year) return parsed;
+        }
+
+        const parentHeaders = Array.from((cal.parentElement || document.body).querySelectorAll(
+          ".datepicker-switch, .picker-switch, .datepicker th.switch, .ui-datepicker-title, caption, th"
+        ));
+        for (const node of parentHeaders) {
+          const parsed = parseMonthYear(node.innerText || node.textContent || "");
+          if (parsed.month && parsed.year) return parsed;
+        }
+
+        return { month: null, year: null, headerText: "" };
+      };
 
       const candidateCalendars = [];
 
@@ -3303,6 +3347,7 @@ async function bookEarliestAppointment(page, account) {
         if (style.display === "none" || style.visibility === "hidden") continue;
         if (calRect.width < 140 || calRect.height < 120) continue;
 
+        const { month: displayedMonth, year: displayedYear, headerText } = pickCalendarHeader(cal);
         const days = [];
         const tds = cal.querySelectorAll("td");
         for (const d of tds) {
@@ -3316,12 +3361,13 @@ async function bookEarliestAppointment(page, account) {
             d.classList.contains("disabled-day") ||
             d.classList.contains("off") ||
             d.classList.contains("old") ||
+            d.classList.contains("new") ||
             classBlob.includes("disabled-day") ||
             classBlob.includes("disabled");
 
           if (hasDisabledClass) continue;
 
-          const dayNum = parseInt(text);
+          const dayNum = parseInt(text, 10);
           const tdBg = window.getComputedStyle(d).backgroundColor;
           const childBg = childFlagEl ? window.getComputedStyle(childFlagEl).backgroundColor : "";
           const bgColor = childBg && childBg !== "rgba(0, 0, 0, 0)" ? childBg : tdBg;
@@ -3330,13 +3376,12 @@ async function bookEarliestAppointment(page, account) {
           let isGreen = false, isRed = false, isYellow = false;
 
           if (rgbMatch) {
-            const r = parseInt(rgbMatch[1]), g = parseInt(rgbMatch[2]), b = parseInt(rgbMatch[3]);
+            const r = parseInt(rgbMatch[1], 10), g = parseInt(rgbMatch[2], 10), b = parseInt(rgbMatch[3], 10);
             isGreen = g > 100 && g > r * 1.2 && g > b * 1.2;
             isRed = r > 150 && r > g * 1.4 && r > b * 1.4;
             isYellow = r > 200 && g > 150 && b < 120;
           }
 
-          // iDATA specific: enabled/disabled class td'de veya child elementte olabilir
           if (d.classList.contains("enabled-day") || classBlob.includes("enabled-day")) isGreen = true;
           if (d.classList.contains("disabled-day") || classBlob.includes("disabled-day")) { isRed = true; isGreen = false; }
           if (d.classList.contains("bg-success") || d.classList.contains("success") || classBlob.includes("bg-success") || classBlob.includes("success")) isGreen = true;
@@ -3355,6 +3400,9 @@ async function bookEarliestAppointment(page, account) {
 
           const clickableEl = innerLink || d;
           const rect = clickableEl.getBoundingClientRect();
+          const normalizedDate = displayedMonth && displayedYear
+            ? `${displayedYear}-${String(displayedMonth).padStart(2, "0")}-${String(dayNum).padStart(2, "0")}`
+            : null;
 
           days.push({
             day: dayNum,
@@ -3369,10 +3417,12 @@ async function bookEarliestAppointment(page, account) {
             postbackArg,
             linkHref: postbackHref.substring(0, 200),
             onclickText: onclickText.substring(0, 200),
+            normalizedDate,
+            matchesWhitelist: normalizedDate ? allowedSet.has(normalizedDate) : false,
           });
         }
 
-        if (days.length < 20) continue; // gerçek takvim değilse ele
+        if (days.length < 20) continue;
 
         const calCenterX = calRect.x + calRect.width / 2;
         const calCenterY = calRect.y + calRect.height / 2;
@@ -3380,7 +3430,7 @@ async function bookEarliestAppointment(page, account) {
           ? Math.hypot(calCenterX - anchorX, calCenterY - anchorY)
           : 9999;
 
-        candidateCalendars.push({ days, distance, width: calRect.width, height: calRect.height });
+        candidateCalendars.push({ days, distance, width: calRect.width, height: calRect.height, headerText });
       }
 
       if (candidateCalendars.length === 0) {
@@ -3391,32 +3441,45 @@ async function bookEarliestAppointment(page, account) {
       const selectedCalendar = candidateCalendars[0];
       const allDays = selectedCalendar.days;
 
-      const greenDays = allDays.filter(d => d.isGreen && !d.isRed && !d.isYellow).sort((a, b) => a.day - b.day);
+      const strictGreenDays = allDays
+        .filter((d) => d.isGreen && !d.isRed && !d.isYellow)
+        .sort((a, b) => a.day - b.day);
 
-      if (greenDays.length > 0) {
+      const selectableDays = allowedSet.size > 0
+        ? strictGreenDays.filter((d) => d.matchesWhitelist)
+        : strictGreenDays;
+
+      if (selectableDays.length > 0) {
         let target = null;
-        if (tDay) target = greenDays.find(d => d.day === tDay);
-        if (!target) target = greenDays[0];
+        if (targetNormalized) target = selectableDays.find((d) => d.normalizedDate === targetNormalized);
+        if (!target) target = selectableDays[0];
 
         return {
           found: true,
           day: target.day,
+          normalizedDate: target.normalizedDate,
           isGreen: target.isGreen,
           x: target.x,
           y: target.y,
           totalDays: allDays.length,
-          greenCount: greenDays.length,
+          greenCount: selectableDays.length,
           bgColor: target.bgColor,
           hasLink: target.hasLink,
           postbackTarget: target.postbackTarget,
           postbackArg: target.postbackArg,
           linkHref: target.linkHref,
           calendarDistance: selectedCalendar.distance,
+          matchedWhitelist: target.matchesWhitelist,
         };
       }
 
-      return { found: false, totalDays: allDays.length, reason: "no_green_days" };
-    }, targetDay, calIconClicked?.inputX ?? null, calIconClicked?.inputY ?? null);
+      return {
+        found: false,
+        totalDays: allDays.length,
+        reason: allowedSet.size > 0 ? "no_whitelisted_green_days" : "no_green_days",
+        visibleGreenDates: strictGreenDays.map((d) => d.normalizedDate).filter(Boolean).slice(0, 10),
+      };
+    }, targetAppointmentDate?.normalized ?? null, announcedAppointmentDateKeys, calIconClicked?.inputX ?? null, calIconClicked?.inputY ?? null);
 
     console.log(`  [BOOK] Tarih bilgisi: ${JSON.stringify(dateInfo)}`);
     
