@@ -3996,10 +3996,12 @@ async function bookEarliestAppointment(page, account) {
         return await page.evaluate((targetTime) => {
           const normalizeTime = (txt) => {
             const m = (txt || "").replace(/\s+/g, " ").match(/(\d{1,2}[:.]\d{2})/);
-            return m ? m[1].replace(".", ":") : "";
+            if (!m) return "";
+            const [h, mm] = m[1].replace(".", ":").split(":");
+            return `${String(parseInt(h, 10)).padStart(2, "0")}:${mm}`;
           };
 
-          const controls = Array.from(document.querySelectorAll("button, a, input[type='button'], input[type='submit'], [role='button'], .getdatebtnhour"));
+          const controls = Array.from(document.querySelectorAll("button, a, input[type='button'], input[type='submit'], [role='button'], .getdatebtnhour, li, span, div, td, label"));
           for (const el of controls) {
             const txt = (el.innerText || el.textContent || el.value || "").trim();
             const normalizedTextTime = normalizeTime(txt);
@@ -4017,10 +4019,19 @@ async function bookEarliestAppointment(page, account) {
               cls.includes("selected") ||
               cls.includes("checked") ||
               cls.includes("btn-success") ||
+              cls.includes("btn-warning") ||
+              cls.includes("slot-selected") ||
               ariaPressed === "true";
 
-            return { isActive, cls: (el.className || "").substring(0, 100), bg };
+            if (isActive) return { isActive: true, cls: (el.className || "").substring(0, 100), bg };
           }
+
+          // Sağ özet panelde "Saat: 09:30" gibi metin görünüyorsa seçimi başarılı say
+          const pageText = (document.body?.innerText || "").replace(/\s+/g, " ");
+          if (pageText.includes(`Saat: ${targetTime}`) || pageText.includes(`Saat : ${targetTime}`)) {
+            return { isActive: true, cls: "summary-time-matched", bg: "" };
+          }
+
           return { isActive: false, cls: "", bg: "" };
         }, t.time);
       };
