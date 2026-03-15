@@ -3383,13 +3383,30 @@ async function bookEarliestAppointment(page, account) {
       // === DeepSeek forceDateSelection: datepicker internal state manipülasyonu ===
       const forceDateSelectionInternal = async (dayNum) => {
         return await page.evaluate((d) => {
-          // Tüm potansiyel datepicker input'larını bul
-          const inputs = document.querySelectorAll("input.calendarinput, input.flightDate, input[data-provide='datepicker'], input.datepicker");
-          if (!inputs.length || typeof window.jQuery === "undefined") return { success: false, reason: "no_inputs_or_jquery" };
+          // Tüm potansiyel datepicker input'larını bul (RANDEVU alanını önceliklendir)
+          const inputList = Array.from(document.querySelectorAll("input.calendarinput, input.flightDate, input[data-provide='datepicker'], input.datepicker"));
+          if (!inputList.length || typeof window.jQuery === "undefined") return { success: false, reason: "no_inputs_or_jquery" };
 
+          const isVisible = (el) => {
+            const r = el.getBoundingClientRect();
+            const s = window.getComputedStyle(el);
+            return r.width > 0 && r.height > 0 && s.display !== "none" && s.visibility !== "hidden";
+          };
+
+          const scoreInput = (inp) => {
+            const ph = (inp.placeholder || "").toLowerCase();
+            const nm = (inp.name || inp.id || "").toLowerCase();
+            const cls = (inp.className || "").toLowerCase();
+            let score = 0;
+            if (ph.includes("randevu")) score += 100;
+            if (ph.includes("seyahat") || ph.includes("gidiş") || nm.includes("travel") || nm.includes("seyahat")) score -= 120;
+            if (cls.includes("calendarinput")) score += 20;
+            if ((inp.value || "").trim()) score += 10;
+            return score;
+          };
+
+          const inputs = inputList.filter(isVisible).sort((a, b) => scoreInput(b) - scoreInput(a));
           for (const inp of inputs) {
-            const rect = inp.getBoundingClientRect();
-            if (rect.width <= 0 || rect.height <= 0) continue;
 
             // Takvim header'ından ay/yıl oku
             const header = document.querySelector(".datepicker-switch, .datepicker-days th.datepicker-switch, th.switch");
