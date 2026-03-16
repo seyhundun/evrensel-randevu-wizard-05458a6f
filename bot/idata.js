@@ -3638,8 +3638,11 @@ async function bookEarliestAppointment(page, account) {
         .filter((d) => d.isGreen && !d.isRed && !d.isYellow)
         .sort((a, b) => a.day - b.day);
 
-      const selectableDays = allowedSet.size > 0
+      const whitelistedGreenDays = allowedSet.size > 0
         ? strictGreenDays.filter((d) => d.matchesWhitelist)
+        : [];
+      const selectableDays = whitelistedGreenDays.length > 0
+        ? whitelistedGreenDays
         : strictGreenDays;
 
       if (selectableDays.length > 0) {
