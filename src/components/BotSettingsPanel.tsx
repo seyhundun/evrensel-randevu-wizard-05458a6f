@@ -133,6 +133,8 @@ export default function BotSettingsPanel() {
       { key: "captcha_api_key", label: "2Captcha API Key" },
       { key: "ip_rotation_interval", label: "IP Rotasyon Süresi (dk)" },
       { key: "evomi_api_key", label: "Evomi API Key" },
+      { key: "twilio_from_number", label: "Twilio Gönderen Numara" },
+      { key: "twilio_to_numbers", label: "SMS Alıcı Numaralar" },
     ];
 
     for (const { key, label } of keys) {
@@ -581,6 +583,40 @@ export default function BotSettingsPanel() {
               placeholder="ankara (API'den çekmek için butona tıklayın)"
             />
           )}
+        </div>
+      </div>
+
+      {/* Twilio SMS Bildirimleri */}
+      <div className="space-y-3 border-t border-border pt-4">
+        <div className="flex items-center gap-2">
+          <span className="text-sm">📱</span>
+          <Label className="text-xs font-medium">SMS Bildirimleri (Twilio)</Label>
+        </div>
+        <p className="text-[10px] text-muted-foreground">
+          Randevu bulununca size SMS gelir. Birden fazla numara virgülle ayırın.
+        </p>
+
+        <div className="space-y-1">
+          <Label className="text-[11px] text-muted-foreground">Gönderen Numara (Twilio'dan)</Label>
+          <Input
+            className="h-8 text-xs font-mono"
+            value={getDraft("twilio_from_number")}
+            onChange={e => setDraftValue("twilio_from_number", e.target.value)}
+            placeholder="+1234567890"
+          />
+        </div>
+
+        <div className="space-y-1">
+          <Label className="text-[11px] text-muted-foreground">Alıcı Numaralar</Label>
+          <Input
+            className="h-8 text-xs font-mono"
+            value={getDraft("twilio_to_numbers")}
+            onChange={e => setDraftValue("twilio_to_numbers", e.target.value)}
+            placeholder="+905xxxxxxxxx, +905xxxxxxxxx"
+          />
+          <p className="text-[9px] text-muted-foreground">
+            Birden fazla numara virgülle ayırın. Ör: +905551234567, +905559876543
+          </p>
         </div>
       </div>
 
