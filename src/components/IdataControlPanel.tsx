@@ -45,6 +45,7 @@ export default function IdataControlPanel() {
       setCfBlocked(!!cfg.cf_blocked_since);
       setCfBlockedIp(cfg.cf_blocked_ip || null);
       setCfBlockedSince(cfg.cf_blocked_since || null);
+      setCheckInterval(cfg.check_interval || 300);
     }
   };
 
