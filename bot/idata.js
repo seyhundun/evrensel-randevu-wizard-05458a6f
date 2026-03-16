@@ -4008,10 +4008,12 @@ async function bookEarliestAppointment(page, account) {
         }, dayNum, targetNormalized || null);
       };
 
-      // === YÖNTEM 1: humanClick (Puppeteer gerçek mouse) ===
+      // === YÖNTEM 1: sadece yeşil gün hücresinin merkezine tıkla ===
+      const primaryClickX = dateInfo.cellX ?? dateInfo.x;
+      const primaryClickY = dateInfo.cellY ?? dateInfo.y;
       try {
-        await humanClick(page, dateInfo.x, dateInfo.y, { preMovesNear: true });
-        console.log(`  [BOOK] ✅ HumanClick tarih: Gün ${dateInfo.day} (x:${Math.round(dateInfo.x)}, y:${Math.round(dateInfo.y)})`);
+        await humanClick(page, primaryClickX, primaryClickY, { preMovesNear: true });
+        console.log(`  [BOOK] ✅ Green-cell click tarih: Gün ${dateInfo.day} (x:${Math.round(primaryClickX)}, y:${Math.round(primaryClickY)})`);
       } catch (mouseErr) {
         console.log(`  [BOOK] Mouse.click tarih hata: ${mouseErr.message}`);
       }
