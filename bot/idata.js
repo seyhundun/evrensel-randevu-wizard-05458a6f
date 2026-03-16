@@ -4451,7 +4451,9 @@ async function bookEarliestAppointment(page, account) {
           const retryClickX = retryDateInfo.cellX ?? retryDateInfo.x;
           const retryClickY = retryDateInfo.cellY ?? retryDateInfo.y;
           await humanClick(page, retryClickX, retryClickY, { preMovesNear: true });
-          await delay(1500, 2500);
+          await delay(900, 1400);
+          const retryDateVerify = await verifyDateSelection();
+          console.log(`  [BOOK] Retry tarih doğrulama: ${JSON.stringify(retryDateVerify)}`);
         } else {
           console.log(`  [BOOK] ⚠️ Retry'da takvimde gün bulunamadı`);
         }
