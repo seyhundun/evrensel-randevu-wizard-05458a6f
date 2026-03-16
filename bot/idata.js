@@ -4637,7 +4637,7 @@ async function bookEarliestAppointment(page, account) {
         };
       });
 
-      await idataLog(`appt_page_${pageIdx}`, `Sayfa ${pageIdx} | URL: ${pageState.url} | İleri: ${pageState.hasIleri} | Ödeme: ${pageState.hasPayment} | EkHizmet: ${pageState.hasEkHizmetler} | Fatura: ${pageState.hasFatura} | KrediKartı: ${pageState.hasKrediKarti} | DateWarn: ${pageState.hasDateWarning} | Checkbox: ${pageState.checkboxCount} | Hesap: ${account.email}\n${pageState.bodyPreview.substring(0, 500)}`, ssPage);
+      await idataLog(`appt_page_${pageIdx}`, `Sayfa ${pageIdx} | URL: ${pageState.url} | İleri: ${pageState.hasIleri} | Ödeme: ${pageState.hasPayment} | EkHizmet: ${pageState.hasEkHizmetler} | Fatura: ${pageState.hasFatura} | KrediKartı: ${pageState.hasKrediKarti} | DateWarn: ${pageState.hasDateWarning} | Checkbox: ${pageState.checkboxCount} | ${getAccountName(account)}\n${pageState.bodyPreview.substring(0, 500)}`, ssPage);
 
       // ===== Tarih/saat warning yakalandı — akışı resetle ve üst döngüden yeniden dene =====
       if (pageState.hasDateWarning) {
