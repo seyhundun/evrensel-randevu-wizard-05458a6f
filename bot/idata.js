@@ -3437,17 +3437,9 @@ async function bookEarliestAppointment(page, account) {
     
     console.log(`  [BOOK] Step 3: Sadece yeşil gün seçilecek... hedef: ${targetDay ? `${targetDay}/${targetMonth}/${targetYear}` : "ilk yeşil gün"}`);
     
-    // Takvimi hedef aya navigate et (gerekirse)
-    if (targetMonth && targetYear) {
-      await navigateVisibleCalendarToMonth({
-        targetMonth,
-        targetYear,
-        anchorX: calIconClicked?.inputX ?? null,
-        anchorY: calIconClicked?.inputY ?? null,
-        label: "Randevu takvimi",
-      });
-    }
-    
+    // Kullanıcının isteği doğrultusunda randevu takviminde ay gezme kapatıldı.
+    // Sadece ekranda şu an görünen yeşil hücreler hedeflenecek.
+
     // Yeşil günleri tespit et — sadece whitelist içindeki açık tarihlerden seç
     const dateInfo = await page.evaluate((targetNormalized, allowedDates, anchorX, anchorY) => {
       const calendarSelector = ".datepicker, .datepicker-dropdown, .bootstrap-datetimepicker-widget, .datepicker-days, .flatpickr-calendar, .ui-datepicker, [class*='datepicker'], [class*='calendar'], .picker-open, table.table-condensed";
