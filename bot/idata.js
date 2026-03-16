@@ -5111,7 +5111,8 @@ async function mainLoop() {
               if (apptResult.found) {
                 const datesInfo = apptResult.datesStr ? ` | Açık tarihler: ${apptResult.datesStr}` : "";
                 const loginLink = CONFIG.LOGIN_URL;
-                await idataLog("appt_found", `🎉 RANDEVU BULUNDU! Manuel ilerleyin!${datesInfo} | Giriş: ${loginLink} | Hesap: ${account.email}`, apptResult.screenshot);
+                const personName = `${account.first_name || ""} ${account.last_name || ""}`.trim() || account.email;
+                await idataLog("appt_found", `🎉 RANDEVU BULUNDU! Manuel ilerleyin!${datesInfo} | Giriş: ${loginLink} | ${personName}`, apptResult.screenshot);
                 startAlarm();
                 
                 // Manuel mod — otomatik booking devre dışı, tarayıcıyı açık tut
