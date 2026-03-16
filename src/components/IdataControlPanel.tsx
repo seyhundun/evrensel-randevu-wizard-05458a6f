@@ -1,7 +1,9 @@
 import { useState, useEffect } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
-import { Play, Square, ShieldAlert, RotateCcw, Server, ServerOff } from "lucide-react";
+import { Slider } from "@/components/ui/slider";
+import { Label } from "@/components/ui/label";
+import { Play, Square, ShieldAlert, RotateCcw, Server, ServerOff, Clock } from "lucide-react";
 import { toast } from "sonner";
 
 export default function IdataControlPanel() {
@@ -13,6 +15,7 @@ export default function IdataControlPanel() {
   const [cfBlockedSince, setCfBlockedSince] = useState<string | null>(null);
   const [lastLogAt, setLastLogAt] = useState<string | null>(null);
   const [serverAlive, setServerAlive] = useState(false);
+  const [checkInterval, setCheckInterval] = useState(300);
 
   useEffect(() => {
     loadConfig();
@@ -42,6 +45,7 @@ export default function IdataControlPanel() {
       setCfBlocked(!!cfg.cf_blocked_since);
       setCfBlockedIp(cfg.cf_blocked_ip || null);
       setCfBlockedSince(cfg.cf_blocked_since || null);
+      setCheckInterval(cfg.check_interval || 300);
     }
   };
 
@@ -154,6 +158,38 @@ export default function IdataControlPanel() {
           {!isActive && (
             <span className="text-xs px-2 py-0.5 rounded bg-muted text-muted-foreground">Pasif</span>
           )}
+        </div>
+      </div>
+
+      {/* Check Interval Slider */}
+      <div className="flex flex-col gap-2 p-3 rounded-lg border border-border bg-muted/30">
+        <Label className="text-xs font-medium flex items-center gap-1.5">
+          <Clock className="w-3.5 h-3.5 text-muted-foreground" />
+          Kontrol Aralığı
+          <span className="ml-auto tabular-nums text-primary font-semibold text-xs">
+            {checkInterval >= 60 ? `${Math.floor(checkInterval / 60)}dk ${checkInterval % 60 > 0 ? `${checkInterval % 60}s` : ""}` : `${checkInterval}s`}
+          </span>
+        </Label>
+        <Slider
+          value={[checkInterval]}
+          onValueChange={async ([v]) => {
+            setCheckInterval(v);
+            if (configId) {
+              await supabase
+                .from("idata_config" as any)
+                .update({ check_interval: v } as any)
+                .eq("id", configId);
+            }
+          }}
+          min={30}
+          max={600}
+          step={30}
+          className="w-full"
+        />
+        <div className="flex justify-between text-[10px] text-muted-foreground">
+          <span>30s</span>
+          <span>5dk</span>
+          <span>10dk</span>
         </div>
       </div>
 
