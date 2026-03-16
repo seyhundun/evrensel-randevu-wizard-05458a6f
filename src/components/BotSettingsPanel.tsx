@@ -133,6 +133,8 @@ export default function BotSettingsPanel() {
       { key: "captcha_api_key", label: "2Captcha API Key" },
       { key: "ip_rotation_interval", label: "IP Rotasyon Süresi (dk)" },
       { key: "evomi_api_key", label: "Evomi API Key" },
+      { key: "twilio_from_number", label: "Twilio Gönderen Numara" },
+      { key: "twilio_to_numbers", label: "SMS Alıcı Numaralar" },
     ];
 
     for (const { key, label } of keys) {
