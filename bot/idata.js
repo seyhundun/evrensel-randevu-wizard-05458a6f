@@ -3859,7 +3859,7 @@ async function bookEarliestAppointment(page, account) {
 
           const hint = window.__idataApptInputHint || null;
           const travelWords = ["seyahat", "gidiş", "gidis", "travel", "flight", "departure", "baslangic", "başlangıç"];
-          const hasTravelWord = (txt) => travelWords.some((w) => txt.includes(txt));
+          const hasTravelWord = (txt) => travelWords.some((w) => txt.includes(w));
           const anchorX = window.__idataApptAnchorX ?? null;
           const anchorY = window.__idataApptAnchorY ?? null;
 
