@@ -2734,8 +2734,20 @@ async function checkAppointments(page, account) {
       
       // Sayfa metninden tarihleri de çek (DD.MM.YYYY, DD/MM/YYYY, DD-MM-YYYY)
       const textDates = Array.from(new Set(body.match(/\b\d{2}[./-]\d{2}[./-]\d{4}\b/g) || []));
+      const today = new Date();
+      today.setHours(0,0,0,0);
       for (const td of textDates) {
-        if (!dates.includes(td)) dates.push(td);
+        if (dates.includes(td)) continue;
+        // Geçmiş tarihleri filtrele (doğum tarihi gibi yanlış eşleşmeleri önle)
+        const parts = td.split(/[.\/-]/);
+        if (parts.length === 3) {
+          const d = parseInt(parts[0], 10);
+          const m = parseInt(parts[1], 10) - 1;
+          const y = parseInt(parts[2], 10);
+          const parsed = new Date(y, m, d);
+          if (parsed < today) continue; // Geçmiş tarih, atla
+        }
+        dates.push(td);
       }
       
       if (hasDatePicker || hasAvailableSlots || dates.length > 0) {
@@ -2784,8 +2796,17 @@ async function bookEarliestAppointment(page, account) {
       const body = (document.body?.innerText || "");
       const hasDateSection = body.includes("En yakın randevu tarihleri");
       
-      // Ekranda listelenen uygun tarihleri topla
-      const dateMatches = Array.from(new Set(body.match(/\b\d{2}[./-]\d{2}[./-]\d{4}\b/g) || []));
+      // Ekranda listelenen uygun tarihleri topla (geçmiş tarihleri filtrele)
+      const allDateMatches = Array.from(new Set(body.match(/\b\d{2}[./-]\d{2}[./-]\d{4}\b/g) || []));
+      const todayTs = new Date(); todayTs.setHours(0,0,0,0);
+      const dateMatches = allDateMatches.filter(td => {
+        const p = td.split(/[.\/-]/);
+        if (p.length === 3) {
+          const parsed = new Date(parseInt(p[2],10), parseInt(p[1],10)-1, parseInt(p[0],10));
+          return parsed >= todayTs;
+        }
+        return true;
+      });
       
       // İLERİ butonunu bul — genelde yeşil, sağ altta
       const candidates = Array.from(document.querySelectorAll('a, button, input[type="submit"], input[type="button"]'));
