@@ -3841,9 +3841,9 @@ async function bookEarliestAppointment(page, account) {
       };
 
       // === DeepSeek forceDateSelection: datepicker internal state manipülasyonu ===
-      const forceDateSelectionInternal = async (dayNum) => {
-        return await page.evaluate((d) => {
-          // Tüm potansiyel datepicker input'larını bul (RANDEVU alanını önceliklendir)
+      const forceDateSelectionInternal = async (dayNum, targetNormalized = null) => {
+        return await page.evaluate((d, expectedNormalized) => {
+          const calendarSelector = ".datepicker, .datepicker-dropdown, .bootstrap-datetimepicker-widget, .datepicker-days, .flatpickr-calendar, .ui-datepicker, [class*='datepicker'], [class*='calendar'], .picker-open, table.table-condensed";
           const inputList = Array.from(document.querySelectorAll("input.calendarinput, input.flightDate, input[data-provide='datepicker'], input.datepicker"));
           if (!inputList.length || typeof window.jQuery === "undefined") return { success: false, reason: "no_inputs_or_jquery" };
 
@@ -3853,104 +3853,130 @@ async function bookEarliestAppointment(page, account) {
             return r.width > 0 && r.height > 0 && s.display !== "none" && s.visibility !== "hidden";
           };
 
+          const hint = window.__idataApptInputHint || null;
+          const travelWords = ["seyahat", "gidiş", "gidis", "travel", "flight", "departure", "baslangic", "başlangıç"];
+          const hasTravelWord = (txt) => travelWords.some((w) => txt.includes(txt));
+          const anchorX = window.__idataApptAnchorX ?? null;
+          const anchorY = window.__idataApptAnchorY ?? null;
+
+          const normalizeText = (value) => String(value || "")
+            .toLowerCase()
+            .normalize("NFD")
+            .replace(/[\u0300-\u036f]/g, "")
+            .replace(/ı/g, "i")
+            .replace(/ğ/g, "g")
+            .replace(/ş/g, "s")
+            .replace(/ü/g, "u")
+            .replace(/ö/g, "o")
+            .replace(/ç/g, "c")
+            .trim();
+
+          const monthNames = { january:0, february:1, march:2, april:3, may:4, june:5, july:6, august:7, september:8, october:9, november:10, december:11,
+            ocak:0, subat:1, mart:2, nisan:3, mayis:4, haziran:5, temmuz:6, agustos:7, eylul:8, ekim:9, kasim:10, aralik:11 };
+
+          const parseHeaderDate = (text) => {
+            const normalized = normalizeText(text);
+            const ym = normalized.match(/(20\d{2})/);
+            let month = null;
+            for (const [name, num] of Object.entries(monthNames)) {
+              if (normalized.includes(name)) { month = num; break; }
+            }
+            return { month, year: ym ? parseInt(ym[1], 10) : null, headerText: String(text || "").trim() };
+          };
+
+          const findCalendarRoot = (startNode) => {
+            let node = startNode;
+            let best = null;
+            let depth = 0;
+            while (node && node !== document.body && depth < 8) {
+              if (node.matches?.(calendarSelector) && isVisible(node)) {
+                const rect = node.getBoundingClientRect();
+                const dayCount = node.querySelectorAll?.("td").length || 0;
+                if (rect.width >= 140 && rect.height >= 120 && dayCount >= 20) best = node;
+              }
+              node = node.parentElement;
+              depth += 1;
+            }
+            return best;
+          };
+
           const scoreInput = (inp) => {
             const ph = (inp.placeholder || "").toLowerCase();
             const nm = (inp.name || inp.id || "").toLowerCase();
             const cls = (inp.className || "").toLowerCase();
+            const rect = inp.getBoundingClientRect();
+            const blob = `${ph} ${nm} ${cls}`;
             let score = 0;
             if (ph.includes("randevu")) score += 100;
-            if (ph.includes("seyahat") || ph.includes("gidiş") || nm.includes("travel") || nm.includes("seyahat")) score -= 120;
-            if (cls.includes("calendarinput")) score += 20;
+            if (nm.includes("randevu") || nm.includes("appointment")) score += 100;
+            if (blob.includes("calendarinput")) score += 20;
+            if (travelWords.some((w) => blob.includes(w))) score -= 140;
             if ((inp.value || "").trim()) score += 10;
+            if (hint?.id && inp.id === hint.id) score += 260;
+            if (hint?.name && inp.name === hint.name) score += 220;
+            if (hint?.placeholder && (inp.placeholder || "") === hint.placeholder) score += 160;
+            if (hint?.y != null) score -= Math.abs(rect.y - hint.y);
             return score;
           };
 
           const inputs = inputList.filter(isVisible).sort((a, b) => scoreInput(b) - scoreInput(a));
           for (const inp of inputs) {
+            const calendarRoot = findCalendarRoot(inp) || Array.from(document.querySelectorAll(calendarSelector))
+              .filter(isVisible)
+              .map((cal) => {
+                const rect = cal.getBoundingClientRect();
+                const centerX = rect.x + rect.width / 2;
+                const centerY = rect.y + rect.height / 2;
+                const distance = (anchorX != null && anchorY != null)
+                  ? Math.hypot(centerX - anchorX, centerY - anchorY)
+                  : 9999;
+                const insideX = anchorX != null && anchorX >= rect.x - 24 && anchorX <= rect.x + rect.width + 24;
+                const belowAnchor = anchorY != null ? rect.y >= anchorY - 90 : true;
+                const score = (insideX ? 220 : -Math.min(220, Math.abs(centerX - (anchorX ?? centerX)))) + (belowAnchor ? 180 : -260) - Math.round(distance);
+                return { cal, score, distance };
+              })
+              .sort((a, b) => b.score - a.score || a.distance - b.distance)[0]?.cal || null;
 
-            // Takvim header'ından ay/yıl oku
-            const header = document.querySelector(".datepicker-switch, .datepicker-days th.datepicker-switch, th.switch");
-            const headerText = header ? header.textContent.trim() : "";
-            const monthNames = {"January":0,"February":1,"March":2,"April":3,"May":4,"June":5,"July":6,"August":7,"September":8,"October":9,"November":10,"December":11,
-              "Ocak":0,"Şubat":1,"Mart":2,"Nisan":3,"Mayıs":4,"Haziran":5,"Temmuz":6,"Ağustos":7,"Eylül":8,"Ekim":9,"Kasım":10,"Aralık":11};
-            let month = new Date().getMonth(), year = new Date().getFullYear();
-            for (const [name, num] of Object.entries(monthNames)) {
-              if (headerText.includes(name)) { month = num; break; }
+            const headerNode = calendarRoot ? Array.from(calendarRoot.querySelectorAll(".datepicker-switch, .datepicker-days th.datepicker-switch, th.switch, .ui-datepicker-title, caption")).find(Boolean) : null;
+            const headerParsed = parseHeaderDate(headerNode ? headerNode.textContent : "");
+            let month = headerParsed.month;
+            let year = headerParsed.year;
+
+            if ((month == null || year == null) && expectedNormalized) {
+              const m = String(expectedNormalized).match(/^(\d{4})-(\d{2})-(\d{2})$/);
+              if (m) {
+                year = parseInt(m[1], 10);
+                month = parseInt(m[2], 10) - 1;
+              }
             }
-            const ym = headerText.match(/(\d{4})/);
-            if (ym) year = parseInt(ym[1]);
+
+            if (month == null || year == null) {
+              month = new Date().getMonth();
+              year = new Date().getFullYear();
+            }
 
             const dateObj = new Date(year, month, d);
             const dateStrDash = `${String(d).padStart(2, "0")}-${String(month + 1).padStart(2, "0")}-${year}`;
-
-            // 1) jQuery $.data ile datepicker instance'ını al
             const dp = window.jQuery.data(inp, 'datepicker') || window.jQuery(inp).data('datepicker');
             if (dp) {
-              console.log("[FORCE-DATE] datepicker instance bulundu, internal state güncelleniyor...");
-              
-              // viewDate güncelle
               if (dp.viewDate !== undefined) dp.viewDate = new Date(year, month, d);
-              // selected güncelle
               if (dp.selected !== undefined) dp.selected = new Date(year, month, d);
-              // date güncelle (bazı sürümlerde)
               if (dp.date !== undefined) dp.date = new Date(year, month, d);
-              // dates array güncelle
-              if (dp.dates && typeof dp.dates.replace === "function") {
-                dp.dates.replace(dateObj);
-              }
-              
-              // setValue varsa çağır
-              if (typeof dp.setValue === "function") {
-                try { dp.setValue(dateStrDash); } catch(e) { console.log("[FORCE-DATE] setValue hata:", e.message); }
-              }
-              
-              // fill varsa çağır (takvimi yeniden çiz)
-              if (typeof dp.fill === "function") {
-                try { dp.fill(); } catch(e) {}
-              }
-              
-              // update varsa çağır
-              if (typeof dp.update === "function") {
-                try { dp.update(dateObj); } catch(e) {}
-              }
-              
-              // _updateDatepicker varsa çağır
-              if (typeof dp._updateDatepicker === "function") {
-                try { dp._updateDatepicker(); } catch(e) {}
-              }
-
-              // Picker DOM'unda active class güncelle
-              if (dp.picker) {
-                try {
-                  dp.picker.find("td.day").each(function() {
-                    const $this = window.jQuery(this);
-                    $this.removeClass("active");
-                    const dayText = parseInt($this.text());
-                    if (dayText === d && !$this.hasClass("old") && !$this.hasClass("new")) {
-                      $this.addClass("active");
-                    }
-                  });
-                } catch(e) {}
-              }
+              if (dp.dates && typeof dp.dates.replace === "function") dp.dates.replace(dateObj);
+              if (typeof dp.setValue === "function") { try { dp.setValue(dateStrDash); } catch(_) {} }
+              if (typeof dp.fill === "function") { try { dp.fill(); } catch(_) {} }
+              if (typeof dp.update === "function") { try { dp.update(dateObj); } catch(_) {} }
+              if (typeof dp._updateDatepicker === "function") { try { dp._updateDatepicker(); } catch(_) {} }
             }
 
-            // 2) jQuery datepicker API metodları
-            try {
-              window.jQuery(inp).datepicker("setDate", dateObj);
-              console.log("[FORCE-DATE] datepicker setDate çağrıldı:", dateObj.toISOString());
-            } catch(e1) {
-              try {
-                window.jQuery(inp).datepicker("update", dateStrDash);
-                console.log("[FORCE-DATE] datepicker update çağrıldı:", dateStrDash);
-              } catch(e2) {}
+            try { window.jQuery(inp).datepicker("setDate", dateObj); } catch(_) {
+              try { window.jQuery(inp).datepicker("update", dateStrDash); } catch(__) {}
             }
 
-            // 3) Trigger events
             window.jQuery(inp).trigger("changeDate");
             window.jQuery(inp).trigger("change");
             inp.dispatchEvent(new Event("change", { bubbles: true }));
 
-            // 4) Input değerini native setter ile de ayarla
             if (!inp.value || !inp.value.includes(String(d))) {
               const nativeSetter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, "value").set;
               nativeSetter.call(inp, dateStrDash);
@@ -3959,9 +3985,11 @@ async function bookEarliestAppointment(page, account) {
               inp.dispatchEvent(new Event("blur", { bubbles: true }));
             }
 
-            // 5) Tüm görünür takvimlerde active class elle ekle
-            document.querySelectorAll("[class*='datepicker'] td.day, table.table-condensed td.day, .datepicker-days td.day").forEach(td => {
-              const text = parseInt((td.innerText || td.textContent || "").trim());
+            const scopedCells = calendarRoot
+              ? calendarRoot.querySelectorAll("td.day, td")
+              : document.querySelectorAll("[class*='datepicker'] td.day, table.table-condensed td.day, .datepicker-days td.day");
+            scopedCells.forEach((td) => {
+              const text = parseInt((td.innerText || td.textContent || "").trim(), 10);
               if (text === d && !td.classList.contains("old") && !td.classList.contains("new")) {
                 td.classList.add("active");
               } else {
@@ -3969,10 +3997,10 @@ async function bookEarliestAppointment(page, account) {
               }
             });
 
-            return { success: true, inputValue: inp.value, dateStr: dateStrDash };
+            return { success: true, inputValue: inp.value, dateStr: dateStrDash, headerText: headerParsed.headerText || "" };
           }
           return { success: false, reason: "no_visible_input" };
-        }, dayNum);
+        }, dayNum, targetNormalized || null);
       };
 
       // === YÖNTEM 1: humanClick (Puppeteer gerçek mouse) ===
