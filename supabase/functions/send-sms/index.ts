@@ -6,6 +6,18 @@ const corsHeaders = {
     "authorization, x-client-info, apikey, content-type",
 };
 
+// Transliterate Turkish chars & remove emojis for GSM-7 compatibility
+function toGsm7(text: string): string {
+  const map: Record<string, string> = {
+    'ş': 's', 'Ş': 'S', 'ç': 'c', 'Ç': 'C', 'ğ': 'g', 'Ğ': 'G',
+    'ö': 'o', 'Ö': 'O', 'ü': 'u', 'Ü': 'U', 'ı': 'i', 'İ': 'I',
+  };
+  let result = text.replace(/[şŞçÇğĞöÖüÜıİ]/g, (ch) => map[ch] || ch);
+  // Remove emojis (surrogate pairs and common emoji ranges)
+  result = result.replace(/[\u{1F000}-\u{1FFFF}]|[\u{2600}-\u{27BF}]|[\u{FE00}-\u{FEFF}]/gu, '');
+  return result.trim();
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
@@ -60,7 +72,7 @@ Deno.serve(async (req) => {
     // Send SMS to each recipient
     const twilioUrl = `https://api.twilio.com/2010-04-01/Accounts/${accountSid}/Messages.json`;
     const credentials = btoa(`${accountSid}:${authToken}`);
-    const smsBody = message || "Randevu bulundu! 🎉";
+    const smsBody = toGsm7(message || "Randevu bulundu!");
 
     const results = await Promise.allSettled(
       recipients.map(async (toNumber) => {
