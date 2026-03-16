@@ -5201,10 +5201,11 @@ async function mainLoop() {
       }
 
 
-      const waitSec = CONFIG.CHECK_INTERVAL_MS / 1000;
+      const waitMs = dynamicCheckInterval;
+      const waitSec = Math.round(waitMs / 1000);
       await idataLog("bot_idle", `${waitSec}s bekleniyor...`);
       console.log(`  ⏰ ${waitSec}s bekleniyor...`);
-      await delay(CONFIG.CHECK_INTERVAL_MS, CONFIG.CHECK_INTERVAL_MS + 5000);
+      await delay(waitMs, waitMs + 5000);
 
     } catch (err) {
       console.error("  Ana döngü hatası:", err.message);
