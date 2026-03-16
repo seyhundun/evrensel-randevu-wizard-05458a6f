@@ -380,6 +380,15 @@ Deno.serve(async (req) => {
 
         if (status === "found") {
           await supabase.from("tracking_configs").update({ is_active: false }).eq("id", config_id);
+          // Send SMS notification
+          try {
+            const funcUrl = `${supabaseUrl}/functions/v1/send-sms`;
+            await fetch(funcUrl, {
+              method: "POST",
+              headers: { "Content-Type": "application/json", "Authorization": `Bearer ${supabaseKey}` },
+              body: JSON.stringify({ message: `🎉 VFS Randevu Bulundu!\n${message || "Hemen kontrol edin!"}` }),
+            });
+          } catch (smsErr) { console.error("SMS gönderim hatası:", smsErr); }
         }
 
         return new Response(
