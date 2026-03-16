@@ -4217,7 +4217,7 @@ async function bookEarliestAppointment(page, account) {
 
             console.log(`  [BOOK] ✅ Element handle güçlü tıklama: Gün ${targetDay.day} mesafe=${Math.round(targetDay.distance)}`);
             await delay(800, 1300);
-            const forceResult2 = await forceDateSelectionInternal(targetDay.day);
+            const forceResult2 = await forceDateSelectionInternal(targetDay.day, dateInfo.normalizedDate || null);
             console.log(`  [BOOK] Element handle + force sonuç: ${JSON.stringify(forceResult2)}`);
           }
 
