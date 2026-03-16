@@ -5099,10 +5099,10 @@ async function mainLoop() {
             if (loginResult.success) {
               allCfBlocked = false;
               await clearCfBlocked(); // CF engeli kalktı
-              await idataLog("login_success", `Giriş başarılı: ${account.email}`);
+              await idataLog("login_success", `Giriş başarılı: ${getAccountName(account)}`);
               
               // Randevu kontrol
-              await idataLog("appt_check", `Randevu kontrol ediliyor | Hesap: ${account.email}`);
+              await idataLog("appt_check", `Randevu kontrol ediliyor | ${getAccountName(account)}`);
               const apptResult = await checkAppointments(page, account);
               
               if (apptResult.reason === "cloudflare") {
