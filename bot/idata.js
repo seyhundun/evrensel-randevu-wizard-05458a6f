@@ -93,23 +93,38 @@ const ipBannedUntil = new Map();
 const IP_BAN_DURATION_MS = Number(process.env.IP_BAN_DURATION_MS || 1800000);
 
 // ==================== PROXY REGION ROTATION ====================
-const PROXY_REGIONS_FALLBACK = ["ankara", "adana", "konya", "istanbul", "izmir", "bursa", "antalya"];
+const PROXY_REGIONS_FALLBACK = {
+  TR: ["ankara", "adana", "konya", "istanbul", "izmir", "bursa", "antalya"],
+  IT: ["rome", "milan", "naples", "turin", "bologna", "florence", "venice"],
+};
 let evomiRegionsCache = []; // Evomi API'den çekilen bölgeler
 let evomiRegionsLastFetch = 0;
+let evomiRegionsCacheCountry = "";
 let currentRegionIndex = -1;
-let DB_PROXY_REGION = ""; // Dashboard'dan seçilen sabit bölge (idata için artık kullanılmıyor)
+let DB_PROXY_REGION = ""; // Dashboard'dan seçilen sabit bölge
 const PROXY_ISP_LIST = "vodafonenetdslm,turkcellinterne,vodafonenetadsl,superonlinebroa,turktelekom,turktelekomunik,vodafoneturkey,vodafonenetdslk";
 
-// Evomi API'den Türkiye bölgelerini çek
+function getFallbackRegionsByCountry(countryCode = "TR") {
+  const normalizedCountry = String(countryCode || "TR").toUpperCase();
+  return PROXY_REGIONS_FALLBACK[normalizedCountry] || [];
+}
+
 async function fetchEvomiRegions() {
   const now = Date.now();
-  // 10 dakikada bir güncelle
-  if (evomiRegionsCache.length > 0 && now - evomiRegionsLastFetch < 600000) {
+  const targetCountry = String(EVOMI_PROXY_COUNTRY || "TR").toUpperCase();
+
+  if (
+    evomiRegionsCache.length > 0 &&
+    evomiRegionsCacheCountry === targetCountry &&
+    now - evomiRegionsLastFetch < 600000
+  ) {
     return evomiRegionsCache;
   }
+
+  const fallbackRegions = getFallbackRegionsByCountry(targetCountry);
+
   try {
     const fetch = (await import("node-fetch")).default;
-    // bot_settings'den evomi_api_key al
     const settingsRes = await fetch(
       "https://ocrpzwrsyiprfuzsyivf.supabase.co/rest/v1/bot_settings?select=key,value",
       {
@@ -122,67 +137,69 @@ async function fetchEvomiRegions() {
     const settings = await settingsRes.json();
     const map = Object.fromEntries((settings || []).map(s => [s.key, s.value]));
     const apiKey = map.evomi_api_key;
+
     if (!apiKey) {
-      console.warn("  [EVOMI] ⚠️ evomi_api_key bulunamadı, fallback bölgeler kullanılacak");
-      return PROXY_REGIONS_FALLBACK;
+      console.warn(`  [EVOMI] ⚠️ evomi_api_key bulunamadı, ${targetCountry} fallback bölgeleri kullanılacak`);
+      return fallbackRegions;
     }
 
-    // Evomi settings API'den bölgeleri çek
     const evomiRes = await fetch("https://api.evomi.com/public/settings", {
       headers: { "x-apikey": apiKey },
     });
     if (!evomiRes.ok) {
-      console.warn(`  [EVOMI] ⚠️ API hatası [${evomiRes.status}], fallback bölgeler kullanılacak`);
-      return PROXY_REGIONS_FALLBACK;
+      console.warn(`  [EVOMI] ⚠️ API hatası [${evomiRes.status}], ${targetCountry} fallback bölgeleri kullanılacak`);
+      return fallbackRegions;
     }
     const evomiData = await evomiRes.json();
 
-    // Proxy host'a göre ürün tipini belirle
     const host = map.proxy_host || EVOMI_PROXY_HOST || "";
-    let product = "rpc"; // core residential default
+    let product = "rpc";
     if (host.includes("rp.evomi") || host.includes("premium")) product = "rp";
 
     const productData = evomiData?.data?.[product];
     if (!productData) {
-      console.warn(`  [EVOMI] ⚠️ Ürün verisi bulunamadı (${product}), fallback bölgeler kullanılacak`);
-      return PROXY_REGIONS_FALLBACK;
+      console.warn(`  [EVOMI] ⚠️ Ürün verisi bulunamadı (${product}), ${targetCountry} fallback bölgeleri kullanılacak`);
+      return fallbackRegions;
     }
 
-    // Türkiye şehirlerini filtrele
     const allCities = productData.cities?.data || [];
-    const trCities = allCities
-      .filter(c => c.countryCode === "TR")
+    const countryCities = allCities
+      .filter(c => String(c.countryCode || "").toUpperCase() === targetCountry)
       .map(c => {
         const raw = (c.city || c.name || "").toLowerCase().replace(/\s+/g, "");
-        // .province, .city gibi son ekleri temizle
         return raw.replace(/\.(province|city|region|state)$/i, "");
       })
       .filter(Boolean);
 
-    // Eğer şehir yoksa fallback Türkiye bölgeleri kullan (global region'lar Türkiye dışı olabilir)
-    if (trCities.length > 0) {
-      evomiRegionsCache = [...new Set(trCities)]; // benzersiz
+    if (countryCities.length > 0) {
+      evomiRegionsCache = [...new Set(countryCities)];
       evomiRegionsLastFetch = now;
-      console.log(`  [EVOMI] ✅ ${evomiRegionsCache.length} TR bölge bulundu: ${evomiRegionsCache.slice(0, 10).join(", ")}${evomiRegionsCache.length > 10 ? "..." : ""}`);
+      evomiRegionsCacheCountry = targetCountry;
+      console.log(`  [EVOMI] ✅ ${evomiRegionsCache.length} ${targetCountry} bölge bulundu: ${evomiRegionsCache.slice(0, 10).join(", ")}${evomiRegionsCache.length > 10 ? "..." : ""}`);
       return evomiRegionsCache;
     }
 
-    console.warn("  [EVOMI] ⚠️ TR şehir bulunamadı, Türkiye fallback bölgeleri kullanılacak");
-
-    console.warn("  [EVOMI] ⚠️ Hiç bölge bulunamadı, fallback kullanılacak");
-    return PROXY_REGIONS_FALLBACK;
+    console.warn(`  [EVOMI] ⚠️ ${targetCountry} şehir bulunamadı, fallback kullanılacak`);
+    return fallbackRegions;
   } catch (e) {
-    console.warn(`  [EVOMI] ⚠️ Bölge çekme hatası: ${e.message}, fallback kullanılacak`);
-    return PROXY_REGIONS_FALLBACK;
+    console.warn(`  [EVOMI] ⚠️ Bölge çekme hatası: ${e.message}, ${targetCountry} fallback kullanılacak`);
+    return fallbackRegions;
   }
 }
 
 async function getNextProxyRegion() {
-  // DB'den gelen ülke ayarını koru (idata_proxy_country), zorla TR yapma
+  if (DB_PROXY_REGION) {
+    console.log(`  [PROXY] 🏙 Dashboard bölgesi kullanılıyor: ${DB_PROXY_REGION} ülke: ${EVOMI_PROXY_COUNTRY}`);
+    return String(DB_PROXY_REGION).toLowerCase().replace(/\s+/g, "").replace(/\.(province|city|region|state)$/i, "");
+  }
+
   const regions = await fetchEvomiRegions();
+  if (!regions.length) {
+    return "";
+  }
+
   currentRegionIndex = (currentRegionIndex + 1) % regions.length;
   let region = regions[currentRegionIndex];
-  // Obje gelirse string'e çevir
   if (region && typeof region === "object") {
     region = region.city || region.name || region.region || JSON.stringify(region);
   }
