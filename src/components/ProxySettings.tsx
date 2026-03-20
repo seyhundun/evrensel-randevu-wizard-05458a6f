@@ -3,7 +3,9 @@ import { supabase } from "@/integrations/supabase/client";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Network, Shield, Clock, Globe, Zap, Loader2, CheckCircle2, XCircle, Copy, Activity, AlertTriangle, Wifi, WifiOff, MapPin } from "lucide-react";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Label } from "@/components/ui/label";
+import { Network, Shield, Clock, Globe, Zap, Loader2, CheckCircle2, XCircle, Copy, Activity, AlertTriangle, Wifi, WifiOff, MapPin, Smartphone } from "lucide-react";
 import { toast } from "sonner";
 
 interface ProxySettingsProps {
@@ -34,8 +36,10 @@ function timeAgo(dateStr: string): string {
 
 export default function ProxySettings({ configId }: ProxySettingsProps) {
   const [proxyHost, setProxyHost] = useState("—");
+  const [proxyPort, setProxyPort] = useState("—");
   const [proxyCountry, setProxyCountry] = useState("—");
   const [proxyEnabled, setProxyEnabled] = useState(true);
+  const [proxyType, setProxyType] = useState("mobile"); // mobile, core, premium
   const [cfStatus, setCfStatus] = useState<{ blocked: boolean; ip: string | null; since: string | null }>({
     blocked: false, ip: null, since: null,
   });
@@ -46,13 +50,22 @@ export default function ProxySettings({ configId }: ProxySettingsProps) {
     region: null, totalChecks: 0, errorCount: 0, successRate: 100,
   });
 
+  // Derive proxy type from host/port
+  const deriveProxyType = (host: string, port: string) => {
+    if (host.startsWith("mp.")) return "mobile";
+    if (port === "1001") return "premium";
+    return "core";
+  };
+
   const loadBotSettings = useCallback(async () => {
     const { data } = await supabase.from("bot_settings").select("key, value");
     if (data) {
       const map = Object.fromEntries(data.map(d => [d.key, d.value]));
       setProxyHost(map.proxy_host || "—");
+      setProxyPort(map.proxy_port || "—");
       setProxyCountry(map.proxy_country || "—");
       setProxyEnabled(map.proxy_enabled !== "false");
+      setProxyType(deriveProxyType(map.proxy_host || "", map.proxy_port || ""));
       setHealth(prev => ({ ...prev, region: map.proxy_region || null }));
     }
   }, []);
@@ -194,11 +207,27 @@ export default function ProxySettings({ configId }: ProxySettingsProps) {
       ? "text-amber-500"
       : "text-destructive";
 
-  const healthBg = health.successRate >= 80
-    ? "bg-emerald-500/10 border-emerald-500/20"
-    : health.successRate >= 50
-      ? "bg-amber-500/10 border-amber-500/20"
-      : "bg-destructive/10 border-destructive/20";
+  const handleProxyTypeChange = async (type: string) => {
+    const config: Record<string, { host: string; port: string; label: string }> = {
+      mobile: { host: "mp.evomi.com", port: "3000", label: "Mobile" },
+      core: { host: "rp.evomi.com", port: "1000", label: "Core Residential" },
+      premium: { host: "rp.evomi.com", port: "1001", label: "Premium Residential" },
+    };
+    const c = config[type];
+    if (!c) return;
+
+    setProxyType(type);
+    // Update host and port in bot_settings
+    for (const [key, value] of [["proxy_host", c.host], ["proxy_port", c.port]]) {
+      const { data: existing } = await supabase.from("bot_settings").select("id").eq("key", key).maybeSingle();
+      if (existing) {
+        await supabase.from("bot_settings").update({ value }).eq("key", key);
+      } else {
+        await supabase.from("bot_settings").insert({ key, value, label: key === "proxy_host" ? "Proxy Host" : "Proxy Port" });
+      }
+    }
+    toast.success(`Proxy türü ${c.label} olarak değiştirildi (${c.host}:${c.port})`);
+  };
 
   return (
     <div className="space-y-3">
@@ -229,6 +258,24 @@ export default function ProxySettings({ configId }: ProxySettingsProps) {
               {testing ? "Test..." : "Test"}
             </Button>
           </div>
+        </div>
+
+        {/* Proxy Type Selector */}
+        <div className="space-y-1">
+          <Label className="text-[10px] text-muted-foreground flex items-center gap-1">
+            <Smartphone className="w-3 h-3" />
+            Proxy Türü
+          </Label>
+          <Select value={proxyType} onValueChange={handleProxyTypeChange}>
+            <SelectTrigger className="h-7 text-[11px]">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="mobile">📱 Mobile (3G/4G/5G) — En güçlü</SelectItem>
+              <SelectItem value="core">🏠 Core Residential — Ekonomik</SelectItem>
+              <SelectItem value="premium">⭐ Premium Residential — Kaliteli</SelectItem>
+            </SelectContent>
+          </Select>
         </div>
 
         {/* IP & Region */}
