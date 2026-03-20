@@ -77,10 +77,30 @@ let IP_ROTATION_INTERVAL_MS = Number(process.env.IP_ROTATION_INTERVAL_MS || 0); 
 let lastIpRotationTime = Date.now();
 
 // ==================== PROXY REGION ROTATION ====================
-const PROXY_REGIONS_FALLBACK = ["ankara", "adana", "konya", "istanbul", "izmir", "bursa", "antalya"];
+// Ülke bazlı fallback bölge listeleri
+const PROXY_REGIONS_BY_COUNTRY = {
+  TR: ["ankara", "istanbul", "izmir", "bursa", "antalya", "adana", "konya"],
+  PL: ["warsaw", "krakow", "wroclaw", "gdansk", "poznan", "lodz"],
+  FR: ["paris", "lyon", "marseille", "toulouse", "nice", "bordeaux"],
+  NL: ["amsterdam", "rotterdam", "the_hague", "utrecht", "eindhoven"],
+  DK: ["copenhagen", "aarhus", "odense", "aalborg"],
+  DE: ["berlin", "munich", "hamburg", "frankfurt", "cologne"],
+  IT: ["rome", "milan", "naples", "turin", "florence"],
+};
+const PROXY_REGIONS_FALLBACK = PROXY_REGIONS_BY_COUNTRY.TR; // varsayılan
 let currentRegionIndex = -1;
 let DB_PROXY_REGION = ""; // Dashboard'dan seçilen sabit bölge
 const PROXY_ISP_LIST = "vodafonenetdslm,turkcellinterne,vodafonenetadsl,superonlinebroa,turktelekom,turktelekomunik,vodafoneturkey,vodafonenetdslk";
+
+// Tracking config ülkesinden proxy ülke kodunu al
+const COUNTRY_TO_PROXY_CODE = {
+  france: "FR", netherlands: "NL", denmark: "DK", poland: "PL",
+  turkey: "TR", germany: "DE", italy: "IT",
+};
+
+function getProxyRegionsForCountry(proxyCountryCode) {
+  return PROXY_REGIONS_BY_COUNTRY[proxyCountryCode] || PROXY_REGIONS_BY_COUNTRY.TR;
+}
 
 function getNextProxyRegion() {
   // Dashboard'dan bölge seçilmişse sabit kullan
@@ -88,10 +108,11 @@ function getNextProxyRegion() {
     console.log(`  [PROXY] 🏙 Dashboard bölgesi kullanılıyor: ${DB_PROXY_REGION}`);
     return DB_PROXY_REGION;
   }
-  // Bölge seçilmemişse fallback rotasyon
-  currentRegionIndex = (currentRegionIndex + 1) % PROXY_REGIONS_FALLBACK.length;
-  const region = PROXY_REGIONS_FALLBACK[currentRegionIndex];
-  console.log(`  [PROXY] 🏙 Bölge rotasyonu: ${region} (${currentRegionIndex + 1}/${PROXY_REGIONS_FALLBACK.length})`);
+  // Ülkeye göre bölge rotasyonu
+  const regions = getProxyRegionsForCountry(EVOMI_PROXY_COUNTRY);
+  currentRegionIndex = (currentRegionIndex + 1) % regions.length;
+  const region = regions[currentRegionIndex];
+  console.log(`  [PROXY] 🏙 Bölge rotasyonu: ${region} (${currentRegionIndex + 1}/${regions.length}) [${EVOMI_PROXY_COUNTRY}]`);
   return region;
 }
 
