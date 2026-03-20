@@ -2370,6 +2370,11 @@ async function checkAppointments(config, account) {
       console.log(`  ✅ RANDEVU BULUNDU! Açık tarihler: ${allDatesStr}`);
       await logStep(id, "found", `🎉 RANDEVU BULUNDU! | ${applicantName} | Açık tarihler: ${allDatesStr}`);
       await reportResult(id, "found", `Randevu müsait! ${applicantName} | Açık tarihler: ${allDatesStr}`, availableDates.length || 1, ss);
+      
+      // SMS bildirimi gönder
+      const countryLabel = config.country || "?";
+      const cityLabel = config.city || "?";
+      await sendSmsNotification(`VFS RANDEVU BULUNDU! ${applicantName} | Ulke: ${countryLabel} | Sehir: ${cityLabel} | Tarihler: ${allDatesStr}`);
 
       // ========== OTOMATİK RANDEVU ALMA ==========
       try {
