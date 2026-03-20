@@ -260,6 +260,24 @@ export default function ProxySettings({ configId }: ProxySettingsProps) {
           </div>
         </div>
 
+        {/* Proxy Type Selector */}
+        <div className="space-y-1">
+          <Label className="text-[10px] text-muted-foreground flex items-center gap-1">
+            <Smartphone className="w-3 h-3" />
+            Proxy Türü
+          </Label>
+          <Select value={proxyType} onValueChange={handleProxyTypeChange}>
+            <SelectTrigger className="h-7 text-[11px]">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="mobile">📱 Mobile (3G/4G/5G) — En güçlü</SelectItem>
+              <SelectItem value="core">🏠 Core Residential — Ekonomik</SelectItem>
+              <SelectItem value="premium">⭐ Premium Residential — Kaliteli</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+
         {/* IP & Region */}
         <div className="grid grid-cols-2 gap-2">
           <div className="rounded-md border bg-card p-2 space-y-1">
