@@ -263,13 +263,27 @@ if (CAPSOLVER_API_KEY) console.log(`🔐 Capsolver API key: var (${CAPSOLVER_API
 // Ülke → VFS URL kodu eşlemesi
 const COUNTRY_VFS_CODES = {
   france: "fra",
+  fr: "fra",
+  fra: "fra",
   netherlands: "nld",
+  holland: "nld",
+  nl: "nld",
+  nld: "nld",
   denmark: "dnk",
+  dk: "dnk",
+  dnk: "dnk",
   poland: "pol",
+  pl: "pol",
+  pol: "pol",
 };
 
+function getVfsCountryCode(country) {
+  const normalizedCountry = String(country || "").trim().toLowerCase();
+  return COUNTRY_VFS_CODES[normalizedCountry] || null;
+}
+
 function getVfsLoginUrl(country) {
-  const code = COUNTRY_VFS_CODES[country] || "fra";
+  const code = getVfsCountryCode(country) || "fra";
   return `https://visa.vfsglobal.com/tur/tr/${code}/login`;
 }
 
