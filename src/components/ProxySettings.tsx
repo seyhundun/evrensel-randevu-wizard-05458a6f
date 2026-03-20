@@ -267,7 +267,7 @@ export default function ProxySettings({ configId }: ProxySettingsProps) {
         {/* Proxy Type Selector */}
         <div className="space-y-1">
           <Label className="text-[10px] text-muted-foreground flex items-center gap-1">
-            <Smartphone className="w-3 h-3" />
+            <Globe className="w-3 h-3" />
             Proxy Türü
           </Label>
           <Select value={proxyType} onValueChange={handleProxyTypeChange}>
