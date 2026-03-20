@@ -1795,11 +1795,29 @@ async function checkAppointments(config, account) {
     const vfsLoginUrl = getVfsLoginUrl(country);
     console.log(`  [1/6] URL: ${vfsLoginUrl}`);
     await page.goto(vfsLoginUrl, { waitUntil: "domcontentloaded", timeout: 90000 });
-    await humanIdle(4000, 8000); // Sayfa yüklendikten sonra okuyormuş gibi bekle
+    await humanIdle(3000, 5000);
+    
+    // Cloudflare challenge kontrolü — "Just a moment" sayfasını bekle
+    let pageContent = await page.evaluate(() => document.body?.innerText || "").catch(() => "");
+    if (isCloudflareChallenge(pageContent)) {
+      console.log("  [1/6] ⏳ Cloudflare challenge algılandı, çözülmesi bekleniyor...");
+      await logStep(id, "login_captcha", "Cloudflare challenge algılandı, otomatik çözülüyor...");
+      const cfResolved = await waitForCloudflareChallengeResolve(page, 60000);
+      if (!cfResolved) {
+        console.log(`  [CF] ❌ Cloudflare challenge aşılamadı, IP değiştiriliyor...`);
+        banIpImmediately(activeIp, "cloudflare_challenge_timeout");
+        const ss = await takeScreenshotBase64(page);
+        await logStep(id, "cloudflare", `CF challenge aşılamadı | IP: ${activeIp || realIp}`);
+        await reportResult(id, "error", `Cloudflare challenge aşılamadı | IP: ${activeIp || realIp} | ${account.email}`, 0, ss);
+        return { found: false, accountBanned: false, ipBlocked: true, hadError: true };
+      }
+      // Challenge geçildikten sonra içeriği tekrar oku
+      pageContent = await page.evaluate(() => document.body?.innerText || "").catch(() => "");
+    }
+    
     await humanMove(page);
     
-    // IP engel kontrolü
-    const pageContent = await page.evaluate(() => document.body?.innerText || "").catch(() => "");
+    // IP engel kontrolü (gerçek engel — access denied, 403)
     const pageHtml = await page.evaluate(() => document.documentElement?.outerHTML || "").catch(() => "");
     if (isPageBlocked(pageContent) || pageHtml.trim().length < 500) {
       console.log(`  [IP] 🚫 Sayfa yüklenemedi / engellendi! IP: ${activeIp}`);
