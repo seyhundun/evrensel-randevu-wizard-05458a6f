@@ -100,7 +100,7 @@ export default function ProxySettings({ configId }: ProxySettingsProps) {
       .from("tracking_logs")
       .select("message, created_at")
       .eq("config_id", configId)
-      .in("status", ["error", "network_error", "cloudflare"])
+      .in("status", ["error", "network_error", "cloudflare", "session_expired"])
       .order("created_at", { ascending: false })
       .limit(1);
 
