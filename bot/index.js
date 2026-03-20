@@ -77,10 +77,30 @@ let IP_ROTATION_INTERVAL_MS = Number(process.env.IP_ROTATION_INTERVAL_MS || 0); 
 let lastIpRotationTime = Date.now();
 
 // ==================== PROXY REGION ROTATION ====================
-const PROXY_REGIONS_FALLBACK = ["ankara", "adana", "konya", "istanbul", "izmir", "bursa", "antalya"];
+// Ülke bazlı fallback bölge listeleri
+const PROXY_REGIONS_BY_COUNTRY = {
+  TR: ["ankara", "istanbul", "izmir", "bursa", "antalya", "adana", "konya"],
+  PL: ["warsaw", "krakow", "wroclaw", "gdansk", "poznan", "lodz"],
+  FR: ["paris", "lyon", "marseille", "toulouse", "nice", "bordeaux"],
+  NL: ["amsterdam", "rotterdam", "the_hague", "utrecht", "eindhoven"],
+  DK: ["copenhagen", "aarhus", "odense", "aalborg"],
+  DE: ["berlin", "munich", "hamburg", "frankfurt", "cologne"],
+  IT: ["rome", "milan", "naples", "turin", "florence"],
+};
+const PROXY_REGIONS_FALLBACK = PROXY_REGIONS_BY_COUNTRY.TR; // varsayılan
 let currentRegionIndex = -1;
 let DB_PROXY_REGION = ""; // Dashboard'dan seçilen sabit bölge
 const PROXY_ISP_LIST = "vodafonenetdslm,turkcellinterne,vodafonenetadsl,superonlinebroa,turktelekom,turktelekomunik,vodafoneturkey,vodafonenetdslk";
+
+// Tracking config ülkesinden proxy ülke kodunu al
+const COUNTRY_TO_PROXY_CODE = {
+  france: "FR", netherlands: "NL", denmark: "DK", poland: "PL",
+  turkey: "TR", germany: "DE", italy: "IT",
+};
+
+function getProxyRegionsForCountry(proxyCountryCode) {
+  return PROXY_REGIONS_BY_COUNTRY[proxyCountryCode] || PROXY_REGIONS_BY_COUNTRY.TR;
+}
 
 function getNextProxyRegion() {
   // Dashboard'dan bölge seçilmişse sabit kullan
@@ -88,10 +108,11 @@ function getNextProxyRegion() {
     console.log(`  [PROXY] 🏙 Dashboard bölgesi kullanılıyor: ${DB_PROXY_REGION}`);
     return DB_PROXY_REGION;
   }
-  // Bölge seçilmemişse fallback rotasyon
-  currentRegionIndex = (currentRegionIndex + 1) % PROXY_REGIONS_FALLBACK.length;
-  const region = PROXY_REGIONS_FALLBACK[currentRegionIndex];
-  console.log(`  [PROXY] 🏙 Bölge rotasyonu: ${region} (${currentRegionIndex + 1}/${PROXY_REGIONS_FALLBACK.length})`);
+  // Ülkeye göre bölge rotasyonu
+  const regions = getProxyRegionsForCountry(EVOMI_PROXY_COUNTRY);
+  currentRegionIndex = (currentRegionIndex + 1) % regions.length;
+  const region = regions[currentRegionIndex];
+  console.log(`  [PROXY] 🏙 Bölge rotasyonu: ${region} (${currentRegionIndex + 1}/${regions.length}) [${EVOMI_PROXY_COUNTRY}]`);
   return region;
 }
 
@@ -331,12 +352,16 @@ console.log(`🔐 CAPTCHA API key: ${CONFIG.CAPTCHA_API_KEY ? `var (${CONFIG.CAP
 
 // ==================== FINGERPRINT ====================
 const USER_AGENTS = [
-  "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36",
-  "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36",
-  "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36",
-  "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.5 Safari/605.1.15",
-  "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:127.0) Gecko/20100101 Firefox/127.0",
-  "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36",
+  "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
+  "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36",
+  "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/129.0.0.0 Safari/537.36",
+  "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
+  "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36",
+  "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.1 Safari/605.1.15",
+  "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:133.0) Gecko/20100101 Firefox/133.0",
+  "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:132.0) Gecko/20100101 Firefox/132.0",
+  "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
+  "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36",
 ];
 const VIEWPORTS = [
   { width: 1920, height: 1080 },
@@ -4216,6 +4241,15 @@ async function main() {
           lastIpRotationTime = now;
         }
 
+        // Proxy ülkesini hedef ülkeye otomatik eşle
+        const targetProxyCode = COUNTRY_TO_PROXY_CODE[config.country] || null;
+        if (targetProxyCode && targetProxyCode !== EVOMI_PROXY_COUNTRY && PROXY_MODE === "residential") {
+          console.log(`  [PROXY] 🌍 Proxy ülkesi hedefle eşleniyor: ${EVOMI_PROXY_COUNTRY} → ${targetProxyCode} (hedef: ${config.country})`);
+          await logStep(config.id, "ip_change", `Proxy ülkesi değişti: ${EVOMI_PROXY_COUNTRY} → ${targetProxyCode} (hedef: ${config.country})`);
+          EVOMI_PROXY_COUNTRY = targetProxyCode;
+          currentRegionIndex = -1; // Bölge rotasyonunu sıfırla
+        }
+
         const availableAccounts = accounts.filter(acc => {
           const lastUsed = accountLastUsed.get(acc.id) || 0;
           return (now - lastUsed) >= CONFIG.MIN_ACCOUNT_GAP_MS;
@@ -4272,7 +4306,7 @@ async function main() {
             continue;
           }
 
-          // Her 3 ardışık CF engelde otomatik recovery: tüm ban listesini temizle, yeni bölge/session dene
+           // Her 3 ardışık CF engelde otomatik recovery: tüm ban listesini temizle, yeni bölge/session dene
           if (consecutiveErrors % 3 === 0) {
             const cycle = consecutiveErrors / 3;
             console.log(`\n  🔄 [CF] Otomatik recovery (döngü ${cycle}) — IP ban listesi temizleniyor, yeni bölge deneniyor`);
@@ -4284,22 +4318,31 @@ async function main() {
             // Proxy ayarlarını DB'den tazele
             await loadProxySettingsFromDB();
             
-            // 9+ ardışık başarısızlık → dashboard'a bildir ama durmadan devam et
-            if (consecutiveErrors >= 9) {
-              await logStep(config.id, "cloudflare", `🚫 Ardışık CF engeli (${consecutiveErrors}x) | Otomatik recovery devam ediyor`);
+            // Kademeli soğuma süresi: 3→120s, 6→180s, 9→240s, 12+→300s
+            let cfCooldownMs;
+            if (consecutiveErrors >= 12) {
+              cfCooldownMs = 300000; // 5 dakika
+              await logStep(config.id, "cloudflare", `🚫 Ardışık CF engeli (${consecutiveErrors}x) | 5dk soğuma bekleniyor`);
               await vfsSignalCfBlocked(config.id, ip);
-              // 60s bekle — belki VFS tarafı açılır
-              await new Promise((r) => setTimeout(r, 60000));
+            } else if (consecutiveErrors >= 9) {
+              cfCooldownMs = 240000; // 4 dakika
+              await logStep(config.id, "cloudflare", `🚫 Ardışık CF engeli (${consecutiveErrors}x) | 4dk soğuma bekleniyor`);
+              await vfsSignalCfBlocked(config.id, ip);
+            } else if (consecutiveErrors >= 6) {
+              cfCooldownMs = 180000; // 3 dakika
+              await logStep(config.id, "cloudflare", `⚠️ CF engeli devam ediyor (${consecutiveErrors}x) | 3dk soğuma`);
             } else {
-              // 20s bekle, sonra devam
-              await new Promise((r) => setTimeout(r, 20000));
+              cfCooldownMs = 120000; // 2 dakika
             }
+            
+            console.log(`  [CF] ⏳ ${Math.round(cfCooldownMs / 1000)}s soğuma bekleniyor...`);
+            await new Promise((r) => setTimeout(r, cfCooldownMs));
             continue;
           }
           
-          console.log(`\n🔄 IP engellendi (${consecutiveErrors}/3), 10s sonra sıradaki IP ile deneniyor...`);
+          console.log(`\n🔄 IP engellendi (${consecutiveErrors}/3), 30s sonra sıradaki IP ile deneniyor...`);
           await logStep(config.id, "ip_change", `CF engeli ${consecutiveErrors}/3 | IP: ${ip || "?"}`);
-          await new Promise((r) => setTimeout(r, 10000));
+          await new Promise((r) => setTimeout(r, 30000)); // 10s→30s
           continue;
         }
         
