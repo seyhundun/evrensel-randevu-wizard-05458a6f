@@ -2560,10 +2560,12 @@ async function checkAppointments(config, account) {
             console.log("  🎉✅ RANDEVU BAŞARIYLA ALINDI!");
             await logStep(id, "appt_confirm", `✅ RANDEVU ALINDI! | ${applicantName}`);
             await reportResult(id, "found", `✅ RANDEVU ALINDI! | ${applicantName} | Açık tarihler: ${allDatesStr}`, availableDates.length || 1, finalSs);
+            await sendSmsNotification(`VFS RANDEVU ALINDI! ${applicantName} | Tarihler: ${allDatesStr} | Otomatik rezervasyon basarili!`);
           } else {
             console.log("  ⚠ Randevu bulundu ama otomatik alma sonucu belirsiz");
             await logStep(id, "appt_fail", `Randevu bulundu ama otomatik alma başarısız olabilir | ${applicantName}`);
             await reportResult(id, "found", `🎉 Randevu bulundu! Otomatik alma sonucu belirsiz | ${applicantName}`, 1, finalSs);
+            await sendSmsNotification(`VFS RANDEVU BULUNDU ama otomatik alma belirsiz! ${applicantName} | Tarihler: ${allDatesStr} | Manuel kontrol edin!`);
           }
         } else {
           console.log("  ⚠ Tarih seçilemedi, sadece bildirim gönderildi");
