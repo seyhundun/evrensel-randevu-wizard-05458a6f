@@ -520,6 +520,44 @@ async function reportResult(configId, status, message = "", slotsAvailable = 0, 
   }
 }
 
+// ========== SMS BİLDİRİM (Mutlucell) ==========
+async function sendSmsNotification(message) {
+  try {
+    const fetch = (await import("node-fetch")).default;
+    const smsUrl = "https://ocrpzwrsyiprfuzsyivf.supabase.co/functions/v1/send-sms";
+    
+    // GSM7 uyumlu Türkçe karakter dönüşümü
+    const toGsm7 = (str) => str
+      .replace(/ç/g, "c").replace(/Ç/g, "C")
+      .replace(/ğ/g, "g").replace(/Ğ/g, "G")
+      .replace(/ı/g, "i").replace(/İ/g, "I")
+      .replace(/ö/g, "o").replace(/Ö/g, "O")
+      .replace(/ş/g, "s").replace(/Ş/g, "S")
+      .replace(/ü/g, "u").replace(/Ü/g, "U")
+      .replace(/[^\x20-\x7E\n]/g, ""); // Emoji ve özel karakterleri temizle
+    
+    const smsBody = toGsm7(message);
+    
+    const res = await fetch(smsUrl, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "apikey": CONFIG.API_KEY,
+      },
+      body: JSON.stringify({ message: smsBody }),
+    });
+    
+    const data = await res.json();
+    if (data.ok) {
+      console.log(`  [SMS] ✅ Bildirim gönderildi: ${data.recipients?.join(", ") || "?"}`);
+    } else {
+      console.error(`  [SMS] ❌ Hata: ${data.error}`);
+    }
+  } catch (err) {
+    console.error(`  [SMS] ❌ Gönderim hatası: ${err.message}`);
+  }
+}
+
 // Dashboard'da adım adım görünecek hafif log fonksiyonu
 async function logStep(configId, stepStatus, message = "") {
   if (!configId) return;
@@ -2332,6 +2370,11 @@ async function checkAppointments(config, account) {
       console.log(`  ✅ RANDEVU BULUNDU! Açık tarihler: ${allDatesStr}`);
       await logStep(id, "found", `🎉 RANDEVU BULUNDU! | ${applicantName} | Açık tarihler: ${allDatesStr}`);
       await reportResult(id, "found", `Randevu müsait! ${applicantName} | Açık tarihler: ${allDatesStr}`, availableDates.length || 1, ss);
+      
+      // SMS bildirimi gönder
+      const countryLabel = config.country || "?";
+      const cityLabel = config.city || "?";
+      await sendSmsNotification(`VFS RANDEVU BULUNDU! ${applicantName} | Ulke: ${countryLabel} | Sehir: ${cityLabel} | Tarihler: ${allDatesStr}`);
 
       // ========== OTOMATİK RANDEVU ALMA ==========
       try {
@@ -2517,10 +2560,12 @@ async function checkAppointments(config, account) {
             console.log("  🎉✅ RANDEVU BAŞARIYLA ALINDI!");
             await logStep(id, "appt_confirm", `✅ RANDEVU ALINDI! | ${applicantName}`);
             await reportResult(id, "found", `✅ RANDEVU ALINDI! | ${applicantName} | Açık tarihler: ${allDatesStr}`, availableDates.length || 1, finalSs);
+            await sendSmsNotification(`VFS RANDEVU ALINDI! ${applicantName} | Tarihler: ${allDatesStr} | Otomatik rezervasyon basarili!`);
           } else {
             console.log("  ⚠ Randevu bulundu ama otomatik alma sonucu belirsiz");
             await logStep(id, "appt_fail", `Randevu bulundu ama otomatik alma başarısız olabilir | ${applicantName}`);
             await reportResult(id, "found", `🎉 Randevu bulundu! Otomatik alma sonucu belirsiz | ${applicantName}`, 1, finalSs);
+            await sendSmsNotification(`VFS RANDEVU BULUNDU ama otomatik alma belirsiz! ${applicantName} | Tarihler: ${allDatesStr} | Manuel kontrol edin!`);
           }
         } else {
           console.log("  ⚠ Tarih seçilemedi, sadece bildirim gönderildi");
@@ -2531,6 +2576,7 @@ async function checkAppointments(config, account) {
         await logStep(id, "appt_fail", `Booking hatası: ${bookErr.message} | ${applicantName}`);
         const errSs = await takeScreenshotBase64(page);
         await reportResult(id, "found", `🎉 Randevu bulundu ama otomatik alma başarısız: ${bookErr.message} | ${applicantName}`, 1, errSs);
+        await sendSmsNotification(`VFS RANDEVU BULUNDU ama otoalma basarisiz: ${bookErr.message} | ${applicantName} | Tarihler: ${allDatesStr} | Manuel kontrol edin!`);
       }
 
       return { found: true, accountBanned: false, hadError: false };
