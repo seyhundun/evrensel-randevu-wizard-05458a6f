@@ -4306,7 +4306,7 @@ async function main() {
             continue;
           }
 
-          // Her 3 ardışık CF engelde otomatik recovery: tüm ban listesini temizle, yeni bölge/session dene
+           // Her 3 ardışık CF engelde otomatik recovery: tüm ban listesini temizle, yeni bölge/session dene
           if (consecutiveErrors % 3 === 0) {
             const cycle = consecutiveErrors / 3;
             console.log(`\n  🔄 [CF] Otomatik recovery (döngü ${cycle}) — IP ban listesi temizleniyor, yeni bölge deneniyor`);
@@ -4318,22 +4318,31 @@ async function main() {
             // Proxy ayarlarını DB'den tazele
             await loadProxySettingsFromDB();
             
-            // 9+ ardışık başarısızlık → dashboard'a bildir ama durmadan devam et
-            if (consecutiveErrors >= 9) {
-              await logStep(config.id, "cloudflare", `🚫 Ardışık CF engeli (${consecutiveErrors}x) | Otomatik recovery devam ediyor`);
+            // Kademeli soğuma süresi: 3→120s, 6→180s, 9→240s, 12+→300s
+            let cfCooldownMs;
+            if (consecutiveErrors >= 12) {
+              cfCooldownMs = 300000; // 5 dakika
+              await logStep(config.id, "cloudflare", `🚫 Ardışık CF engeli (${consecutiveErrors}x) | 5dk soğuma bekleniyor`);
               await vfsSignalCfBlocked(config.id, ip);
-              // 60s bekle — belki VFS tarafı açılır
-              await new Promise((r) => setTimeout(r, 60000));
+            } else if (consecutiveErrors >= 9) {
+              cfCooldownMs = 240000; // 4 dakika
+              await logStep(config.id, "cloudflare", `🚫 Ardışık CF engeli (${consecutiveErrors}x) | 4dk soğuma bekleniyor`);
+              await vfsSignalCfBlocked(config.id, ip);
+            } else if (consecutiveErrors >= 6) {
+              cfCooldownMs = 180000; // 3 dakika
+              await logStep(config.id, "cloudflare", `⚠️ CF engeli devam ediyor (${consecutiveErrors}x) | 3dk soğuma`);
             } else {
-              // 20s bekle, sonra devam
-              await new Promise((r) => setTimeout(r, 20000));
+              cfCooldownMs = 120000; // 2 dakika
             }
+            
+            console.log(`  [CF] ⏳ ${Math.round(cfCooldownMs / 1000)}s soğuma bekleniyor...`);
+            await new Promise((r) => setTimeout(r, cfCooldownMs));
             continue;
           }
           
-          console.log(`\n🔄 IP engellendi (${consecutiveErrors}/3), 10s sonra sıradaki IP ile deneniyor...`);
+          console.log(`\n🔄 IP engellendi (${consecutiveErrors}/3), 30s sonra sıradaki IP ile deneniyor...`);
           await logStep(config.id, "ip_change", `CF engeli ${consecutiveErrors}/3 | IP: ${ip || "?"}`);
-          await new Promise((r) => setTimeout(r, 10000));
+          await new Promise((r) => setTimeout(r, 30000)); // 10s→30s
           continue;
         }
         
