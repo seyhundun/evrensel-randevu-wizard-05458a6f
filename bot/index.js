@@ -3478,11 +3478,10 @@ async function registerVfsAccount(account) {
     if (passwordInputs.length < 2) throw new Error("Şifre alanları bulunamadı");
     for (let i = 0; i < passwordInputs.length; i++) {
       await fillAngularInput(page, passwordInputs[i], account.password);
-      await humanIdle(1000, 2500);
-      if (i === 0) { await humanMove(page); await humanScroll(page); }
+      await delay(200, 400);
     }
     console.log("  [REG] ✅ Şifre girildi");
-    await humanIdle(2000, 4000); // Şifre sonrası bekle
+    await delay(300, 600);
 
     // TELEFON
     let normalizedPhone = "";
