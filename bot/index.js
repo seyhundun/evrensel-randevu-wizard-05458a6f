@@ -292,7 +292,7 @@ const CONFIG = {
   OTP_WAIT_MS: Number(process.env.OTP_WAIT_MS || 120000),
   OTP_POLL_MS: Number(process.env.OTP_POLL_MS || 5000),
   MIN_ACCOUNT_GAP_MS: Number(process.env.MIN_ACCOUNT_GAP_MS || 600000),
-  BASE_INTERVAL_MS: Number(process.env.BASE_INTERVAL_MS || 60000),
+  BASE_INTERVAL_MS: Number(process.env.BASE_INTERVAL_MS || 20000),
   MAX_BACKOFF_MS: Number(process.env.MAX_BACKOFF_MS || 900000),
 };
 
@@ -4346,10 +4346,10 @@ async function main() {
           consecutiveErrors = 0;
         }
 
-        const baseInterval = Math.max(config.check_interval * 1000, CONFIG.BASE_INTERVAL_MS);
-        const backoffMultiplier = Math.min(Math.pow(1.5, consecutiveErrors), 5);
+        const baseInterval = config.check_interval * 1000;
+        const backoffMultiplier = consecutiveErrors > 0 ? Math.min(Math.pow(1.5, consecutiveErrors), 5) : 1;
         const interval = Math.min(baseInterval * backoffMultiplier, CONFIG.MAX_BACKOFF_MS);
-        const jitter = Math.floor(Math.random() * 60000) + 15000;
+        const jitter = Math.floor(Math.random() * Math.min(baseInterval * 0.2, 10000));
         const wait = Math.round(interval + jitter);
         console.log(`\n⏳ Sonraki: ${Math.round(wait / 1000)}s (backoff: x${backoffMultiplier.toFixed(1)}, errors: ${consecutiveErrors})`);
         await logStep(config.id, "bot_idle", `Sonraki kontrol: ${Math.round(wait / 1000)}s | IP: ${getCurrentIp() || "doğrudan"}`);
