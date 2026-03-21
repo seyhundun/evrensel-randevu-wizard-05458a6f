@@ -77,6 +77,8 @@ interface CityOffice {
 export default function IdataAccounts() {
   const [accounts, setAccounts] = useState<IdataAccount[]>([]);
   const [showPasswords, setShowPasswords] = useState<Record<string, boolean>>({});
+  const [showImapPass, setShowImapPass] = useState(false);
+  const [showImapPassCards, setShowImapPassCards] = useState<Record<string, boolean>>({});
   const [loading, setLoading] = useState(false);
   const [otpInputs, setOtpInputs] = useState<Record<string, string>>({});
   const [regOtpInputs, setRegOtpInputs] = useState<Record<string, string>>({});
