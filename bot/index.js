@@ -1690,7 +1690,7 @@ async function launchBrowser(proxyIp = null) {
     ? "(residential proxy)" 
     : (proxyIp ? `(IP: ${proxyIp})` : "(proxy yok)");
   console.log(`  [BROWSER] ✅ Tarayıcı başlatıldı ${proxyInfo}`);
-  return { browser, page, proxyAuth, proxyConfig };
+  return { browser, page };
 }
 
 // ==================== MAIN CHECK ====================
