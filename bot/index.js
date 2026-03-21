@@ -1913,6 +1913,25 @@ async function checkAppointments(config, account) {
     await humanMove(page);
     await solveTurnstile(page);
     await delay(1000, 2000);
+
+    // CF challenge sonrası cookie banner tekrar çıkabilir
+    try {
+      const cookieAfterCF = await page.evaluate(() => {
+        const onetrust = document.getElementById('onetrust-accept-btn-handler');
+        if (onetrust && onetrust.offsetParent !== null) { onetrust.click(); return true; }
+        const btns = [...document.querySelectorAll("button, a")];
+        const match = btns.find(b => {
+          const txt = (b.textContent || "").toLowerCase();
+          return (txt.includes("accept all") || txt.includes("kabul") || txt.includes("tümünü kabul") || txt.includes("tüm tanımlama") || txt.includes("tüm çerezleri kabul")) && b.offsetParent !== null;
+        });
+        if (match) { match.click(); return true; }
+        return false;
+      });
+      if (cookieAfterCF) {
+        console.log("  [3/6] ✅ CF sonrası cookie banner kabul edildi");
+        await delay(1000, 1500);
+      }
+    } catch {}
     const queueResult = await waitForLoginFormAfterQueue(page, vfsLoginUrl);
     if (!queueResult.ok) {
       banIpImmediately(activeIp, "queue_or_login_form_timeout");
