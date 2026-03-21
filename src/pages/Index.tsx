@@ -272,7 +272,7 @@ const Index = () => {
                     checksCount={t.checksCount}
                     onSimulateFound={t.simulateFound}
                     configId={t.configId}
-                
+                  />
                 </div>
               </ScrollArea>
             </main>
