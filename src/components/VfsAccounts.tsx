@@ -5,6 +5,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
+import { Switch } from "@/components/ui/switch";
 import { toast } from "sonner";
 import { Plus, Trash2, Eye, EyeOff, UserCheck, Ban, Clock, MessageSquare, Send, UserPlus, Mail, Phone, Loader2, RefreshCw, ShieldAlert, CheckCircle2 } from "lucide-react";
 
@@ -70,6 +71,7 @@ interface VfsAccount {
   registration_otp: string | null;
   captcha_waiting_at: string | null;
   captcha_manual_approved: boolean;
+  booking_enabled: boolean;
 }
 
 export default function VfsAccounts() {
@@ -82,6 +84,7 @@ export default function VfsAccounts() {
   const [smsOtpInputs, setSmsOtpInputs] = useState<Record<string, string>>({});
   const [regOtpInputs, setRegOtpInputs] = useState<Record<string, string>>({});
   const [addMode, setAddMode] = useState<"existing" | "register">("existing");
+  const [editingImap, setEditingImap] = useState<Record<string, { host: string; password: string }>>({});
 
   useEffect(() => {
     loadAccounts();
@@ -202,6 +205,29 @@ export default function VfsAccounts() {
       toast.error("Onay gönderilemedi: " + error.message);
     } else {
       toast.success("Manuel devralma onayı gönderildi! Bot devam edecek.");
+    }
+  };
+
+  const toggleBooking = async (id: string, enabled: boolean) => {
+    const { error } = await supabase
+      .from("vfs_accounts")
+      .update({ booking_enabled: enabled } as any)
+      .eq("id", id);
+    if (error) toast.error("Güncelleme hatası: " + error.message);
+    else toast.success(enabled ? "Hesap aktif edildi" : "Hesap pasif edildi");
+  };
+
+  const saveImapSettings = async (id: string) => {
+    const imap = editingImap[id];
+    if (!imap) return;
+    const { error } = await supabase
+      .from("vfs_accounts")
+      .update({ imap_host: imap.host || null, imap_password: imap.password || null } as any)
+      .eq("id", id);
+    if (error) toast.error("IMAP kayıt hatası: " + error.message);
+    else {
+      toast.success("IMAP ayarları kaydedildi");
+      setEditingImap((prev) => { const n = { ...prev }; delete n[id]; return n; });
     }
   };
 
@@ -344,12 +370,22 @@ export default function VfsAccounts() {
       ) : (
         <div className="space-y-2">
           {accounts.map((acc) => (
-            <Card key={acc.id} className="p-3 flex flex-col gap-2">
+            <Card key={acc.id} className={`p-3 flex flex-col gap-2 ${!acc.booking_enabled ? 'opacity-60' : ''}`}>
               <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4">
+                <div className="flex items-center gap-2 shrink-0">
+                  <Switch
+                    checked={acc.booking_enabled}
+                    onCheckedChange={(v) => toggleBooking(acc.id, v)}
+                    className="data-[state=checked]:bg-emerald-500"
+                  />
+                </div>
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2 flex-wrap">
                     <span className="font-mono text-sm truncate">{acc.email}</span>
                     {statusBadge(acc)}
+                    {acc.imap_password && (
+                      <Badge className="bg-blue-500/10 text-blue-600 border-blue-500/20 text-[10px]">📧 IMAP</Badge>
+                    )}
                   </div>
                   <div className="flex items-center gap-2 mt-1">
                     <span className="text-xs text-muted-foreground font-mono">
@@ -454,6 +490,50 @@ export default function VfsAccounts() {
                   <MessageSquare className="w-3 h-3" /> OTP gönderildi: {acc.manual_otp}
                 </span>
               )}
+
+              {/* IMAP OTP Ayarları */}
+              <div className="border-t pt-2 mt-1">
+                {editingImap[acc.id] ? (
+                  <div className="flex flex-wrap items-end gap-2">
+                    <div>
+                      <Label className="text-[10px]">IMAP Host</Label>
+                      <Input
+                        className="h-7 w-40 text-xs"
+                        placeholder="imap.gmail.com"
+                        value={editingImap[acc.id].host}
+                        onChange={(e) => setEditingImap((prev) => ({ ...prev, [acc.id]: { ...prev[acc.id], host: e.target.value } }))}
+                      />
+                    </div>
+                    <div>
+                      <Label className="text-[10px]">IMAP Şifre (App Password)</Label>
+                      <Input
+                        className="h-7 w-40 text-xs"
+                        type="password"
+                        placeholder="uygulama şifresi"
+                        value={editingImap[acc.id].password}
+                        onChange={(e) => setEditingImap((prev) => ({ ...prev, [acc.id]: { ...prev[acc.id], password: e.target.value } }))}
+                      />
+                    </div>
+                    <Button size="sm" className="h-7 gap-1" onClick={() => saveImapSettings(acc.id)}>
+                      <CheckCircle2 className="w-3 h-3" /> Kaydet
+                    </Button>
+                    <Button size="sm" variant="ghost" className="h-7" onClick={() => setEditingImap((prev) => { const n = { ...prev }; delete n[acc.id]; return n; })}>
+                      İptal
+                    </Button>
+                  </div>
+                ) : (
+                  <button
+                    className="text-xs text-muted-foreground hover:text-foreground flex items-center gap-1"
+                    onClick={() => setEditingImap((prev) => ({
+                      ...prev,
+                      [acc.id]: { host: acc.imap_host || "imap.gmail.com", password: acc.imap_password || "" }
+                    }))}
+                  >
+                    <Mail className="w-3 h-3" />
+                    {acc.imap_password ? "📧 IMAP ayarlandı — düzenle" : "📧 IMAP OTP ekle (otomatik kod okuma)"}
+                  </button>
+                )}
+              </div>
 
               {acc.fail_count > 0 && (
                 <span className="text-xs text-destructive">Başarısız giriş: {acc.fail_count}</span>
