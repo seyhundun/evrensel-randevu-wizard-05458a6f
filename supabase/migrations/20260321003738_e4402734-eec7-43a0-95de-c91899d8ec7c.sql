@@ -1,0 +1,1 @@
+ALTER TABLE public.vfs_accounts ADD COLUMN IF NOT EXISTS booking_enabled boolean NOT NULL DEFAULT true;
