@@ -1913,6 +1913,25 @@ async function checkAppointments(config, account) {
     await humanMove(page);
     await solveTurnstile(page);
     await delay(1000, 2000);
+
+    // CF challenge sonrası cookie banner tekrar çıkabilir
+    try {
+      const cookieAfterCF = await page.evaluate(() => {
+        const onetrust = document.getElementById('onetrust-accept-btn-handler');
+        if (onetrust && onetrust.offsetParent !== null) { onetrust.click(); return true; }
+        const btns = [...document.querySelectorAll("button, a")];
+        const match = btns.find(b => {
+          const txt = (b.textContent || "").toLowerCase();
+          return (txt.includes("accept all") || txt.includes("kabul") || txt.includes("tümünü kabul") || txt.includes("tüm tanımlama") || txt.includes("tüm çerezleri kabul")) && b.offsetParent !== null;
+        });
+        if (match) { match.click(); return true; }
+        return false;
+      });
+      if (cookieAfterCF) {
+        console.log("  [3/6] ✅ CF sonrası cookie banner kabul edildi");
+        await delay(1000, 1500);
+      }
+    } catch {}
     const queueResult = await waitForLoginFormAfterQueue(page, vfsLoginUrl);
     if (!queueResult.ok) {
       banIpImmediately(activeIp, "queue_or_login_form_timeout");
@@ -2801,7 +2820,7 @@ async function selectTurkeyDialCode(page) {
 }
 
 async function tickAllCheckboxes(page) {
-  console.log("  [REG] Onay checkbox'ları işaretleniyor...");
+  console.log("  [REG] Onay checkbox'ları işaretleniyor (toggle stratejisi)...");
 
   const result = await page.evaluate(() => {
     const isVisible = (el) => {
@@ -2828,12 +2847,19 @@ async function tickAllCheckboxes(page) {
 
     const clickTarget = (el) => {
       if (!el) return;
-      try {
-        el.scrollIntoView({ block: "center", inline: "nearest" });
-      } catch {}
-      try {
-        el.click();
-      } catch {}
+      try { el.scrollIntoView({ block: "center", inline: "nearest" }); } catch {}
+      try { el.click(); } catch {}
+    };
+
+    // Toggle stratejisi: tıkla(check) → tıkla(uncheck) → tıkla(check) — Angular change detection tetiklensin
+    const toggleClick = (el, cb) => {
+      if (!el) return;
+      clickTarget(el);
+      if (cb) emitCheckboxEvents(cb);
+      clickTarget(el);
+      if (cb) emitCheckboxEvents(cb);
+      clickTarget(el);
+      if (cb) emitCheckboxEvents(cb);
     };
 
     const readRoleChecked = (box) => {
@@ -2850,12 +2876,7 @@ async function tickAllCheckboxes(page) {
         return submitKeywords.some((k) => txt.includes(k));
       }) || scope.querySelector('button[type="submit"]');
 
-    let considered = 0;
-    let checked = 0;
-    let touched = 0;
-    let matTouched = 0;
-    let roleTouched = 0;
-    let fallbackTouched = 0;
+    let considered = 0, checked = 0, touched = 0, matTouched = 0, roleTouched = 0, fallbackTouched = 0;
 
     const inputCheckboxes = Array.from(scope.querySelectorAll('input[type="checkbox"]')).filter((cb) => isVisible(cb));
 
@@ -2866,20 +2887,19 @@ async function tickAllCheckboxes(page) {
 
       const shouldCheck = cb.required || cb.getAttribute("aria-required") === "true" || keywords.test(meta);
       if (!shouldCheck) continue;
-
       considered++;
 
-      if (!cb.checked) {
-        clickTarget(host || cb);
-        if (!cb.checked) {
-          const checkedSetter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "checked")?.set;
-          if (checkedSetter) checkedSetter.call(cb, true);
-          else cb.checked = true;
-        }
-        touched++;
-      }
+      // Toggle: 3 tıklama ile Angular'ı tetikle (son durum: checked)
+      toggleClick(host || cb, cb);
+      touched++;
 
-      emitCheckboxEvents(cb);
+      // Hâlâ checked değilse force set
+      if (!cb.checked) {
+        const checkedSetter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "checked")?.set;
+        if (checkedSetter) checkedSetter.call(cb, true);
+        else cb.checked = true;
+        emitCheckboxEvents(cb);
+      }
       if (cb.checked) checked++;
     }
 
@@ -2896,15 +2916,11 @@ async function tickAllCheckboxes(page) {
       const ariaRequired = box.getAttribute("aria-required") === "true" || input?.required;
       const hasKeyword = keywords.test(text);
       if (!ariaRequired && !hasKeyword) continue;
-
       considered++;
 
-      const wasChecked = input ? !!input.checked : readRoleChecked(box);
-      if (!wasChecked) {
-        clickTarget(box);
-        if (input) emitCheckboxEvents(input);
-        roleTouched++;
-      }
+      // Toggle: 3 tıklama
+      toggleClick(box, input);
+      roleTouched++;
 
       const nowChecked = input ? !!input.checked : readRoleChecked(box);
       if (nowChecked) checked++;
@@ -2919,51 +2935,42 @@ async function tickAllCheckboxes(page) {
 
     let submitBtn = findSubmit();
 
-    // Fallback: submit hâlâ disabled ise kalan görünür checkbox'ları da dene
+    // Fallback: submit hâlâ disabled ise kalan tüm görünür checkbox'ları da dene
     if (submitBtn?.disabled) {
       for (const cb of inputCheckboxes) {
         const hostText = (cb.closest("label, div, span")?.textContent || "").toLowerCase();
         if (skipText.test(hostText)) continue;
         if (cb.checked) continue;
 
-        clickTarget(cb.closest('label, .form-check, .mdc-form-field') || cb);
+        toggleClick(cb.closest('label, .form-check, .mdc-form-field') || cb, cb);
         if (!cb.checked) {
           const checkedSetter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "checked")?.set;
           if (checkedSetter) checkedSetter.call(cb, true);
           else cb.checked = true;
+          emitCheckboxEvents(cb);
         }
-        emitCheckboxEvents(cb);
         fallbackTouched++;
       }
 
       for (const box of roleBoxes) {
         const input = box.querySelector('input[type="checkbox"]');
         if (input && inputCheckboxes.includes(input)) continue;
-
         const text = `${box.textContent || ""} ${box.getAttribute("aria-label") || ""}`.toLowerCase();
         if (skipText.test(text)) continue;
-
         const isChecked = input ? !!input.checked : readRoleChecked(box);
         if (isChecked) continue;
-
-        clickTarget(box);
-        if (input) emitCheckboxEvents(input);
+        toggleClick(box, input);
         fallbackTouched++;
       }
 
+      if (formEl) {
+        formEl.dispatchEvent(new Event("input", { bubbles: true }));
+        formEl.dispatchEvent(new Event("change", { bubbles: true }));
+      }
       submitBtn = findSubmit();
     }
 
-    return {
-      considered,
-      checked,
-      touched,
-      matTouched,
-      roleTouched,
-      fallbackTouched,
-      submitDisabled: !!submitBtn?.disabled,
-      visibleCheckboxCount: inputCheckboxes.length + roleBoxes.length,
-    };
+    return { considered, checked, touched, matTouched, roleTouched, fallbackTouched, submitDisabled: !!submitBtn?.disabled, visibleCheckboxCount: inputCheckboxes.length + roleBoxes.length };
   });
 
   console.log(
@@ -3421,6 +3428,26 @@ async function registerVfsAccount(account) {
     await humanMove(page);
     await solveTurnstile(page);
     await humanIdle(3000, 6000);
+
+    // CF challenge sonrası cookie banner tekrar çıkabilir — yakala
+    console.log("  [REG 3.5/7] CF sonrası cookie banner kontrol...");
+    try {
+      const cookieAfterCF = await page.evaluate(() => {
+        const onetrust = document.getElementById('onetrust-accept-btn-handler');
+        if (onetrust && onetrust.offsetParent !== null) { onetrust.click(); return true; }
+        const btns = [...document.querySelectorAll("button, a")];
+        const match = btns.find(b => {
+          const txt = (b.textContent || "").toLowerCase();
+          return (txt.includes("accept all") || txt.includes("kabul") || txt.includes("tümünü kabul") || txt.includes("tüm tanımlama") || txt.includes("tüm çerezleri kabul")) && b.offsetParent !== null;
+        });
+        if (match) { match.click(); return true; }
+        return false;
+      });
+      if (cookieAfterCF) {
+        console.log("  [REG 3.5/7] ✅ CF sonrası cookie banner kabul edildi");
+        await delay(1000, 1500);
+      }
+    } catch {}
 
     // Form yüklenmesini bekle
     console.log("  [REG 4/7] Form bekleniyor...");
