@@ -434,6 +434,23 @@ async function humanType(page, target, text, options = {}) {
     }
   }
   await delay(400, 1000);
+
+  // Angular reactive form uyumluluğu: native setter + event dispatch
+  await page.evaluate((selector, value) => {
+    const el = typeof selector === 'string' ? document.querySelector(selector) : null;
+    if (!el) return;
+    const proto = Object.getPrototypeOf(el);
+    const descriptor = Object.getOwnPropertyDescriptor(proto, 'value') 
+      || Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')
+      || Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value');
+    if (descriptor && descriptor.set) {
+      descriptor.set.call(el, value);
+    }
+    el.dispatchEvent(new Event("input", { bubbles: true }));
+    el.dispatchEvent(new Event("change", { bubbles: true }));
+    el.dispatchEvent(new Event("blur", { bubbles: true }));
+  }, typeof target === "string" ? target : null, String(text));
+
   return true;
 }
 
