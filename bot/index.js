@@ -2896,13 +2896,13 @@ async function tickAllCheckboxes(page) {
   for (const cb of allCbs) {
     console.log(`  [REG] Checkbox tıklanıyor: ${cb.meta.substring(0, 40)}...`);
 
-    // Fiziksel tıklama #1 — aktif et
+    // Fiziksel tıklama #1 — pasif et
     await page.mouse.click(cb.x, cb.y);
-    await delay(400, 700);
+    await delay(1000, 1200);
 
-    // Fiziksel tıklama #2 — Angular algılasın (2 tıklama yeterli)
+    // Fiziksel tıklama #2 — aktif et (1sn arayla, Angular algılar)
     await page.mouse.click(cb.x, cb.y);
-    await delay(400, 700);
+    await delay(1000, 1200);
 
     // Event'leri de tetikle
     await page.evaluate(({ x, y }) => {
