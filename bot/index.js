@@ -1661,10 +1661,6 @@ async function launchBrowser(proxyIp = null) {
       username: rp.user,
       password: rp.pass,
     };
-    proxyAuth = {
-      username: rp.user,
-      password: rp.pass,
-    };
     console.log(`  [BROWSER] 🏠 Residential proxy: ${rp.host}:${rp.port}`);
   } else if (proxyIp) {
     const proxyPort = 10800 + IP_LIST.indexOf(proxyIp);
