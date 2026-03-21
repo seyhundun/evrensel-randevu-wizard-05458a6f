@@ -1650,7 +1650,6 @@ async function launchBrowser(proxyIp = null) {
   ];
   
   let proxyConfig = undefined;
-  let proxyAuth = null;
 
   if (!PROXY_ENABLED) {
     console.log(`  [BROWSER] 🔵 Proxy KAPALI — sunucu kendi IP'si ile çıkıyor`);
