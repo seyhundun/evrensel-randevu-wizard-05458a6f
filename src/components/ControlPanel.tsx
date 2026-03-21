@@ -199,21 +199,21 @@ export default function ControlPanel({
           <Clock className="w-3 h-3 text-muted-foreground" />
           Kontrol Aralığı
           <span className="ml-auto tabular-nums text-primary font-semibold text-xs">
-            {interval}s
+            {interval >= 60 ? `${Math.floor(interval / 60)}dk ${interval % 60 ? (interval % 60) + "s" : ""}`.trim() : `${interval}s`}
           </span>
         </Label>
         <Slider
           value={[interval]}
           onValueChange={([v]) => setIntervalValue(v)}
-          min={60}
-          max={300}
+          min={20}
+          max={1800}
           step={10}
           disabled={isActive}
           className="w-full"
         />
         <div className="flex justify-between text-[10px] text-muted-foreground">
-          <span>60s</span>
-          <span>300s</span>
+          <span>20s</span>
+          <span>30dk</span>
         </div>
       </div>
 
