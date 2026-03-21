@@ -84,6 +84,7 @@ export default function VfsAccounts() {
   const [smsOtpInputs, setSmsOtpInputs] = useState<Record<string, string>>({});
   const [regOtpInputs, setRegOtpInputs] = useState<Record<string, string>>({});
   const [addMode, setAddMode] = useState<"existing" | "register">("existing");
+  const [editingImap, setEditingImap] = useState<Record<string, { host: string; password: string }>>({});
 
   useEffect(() => {
     loadAccounts();
