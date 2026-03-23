@@ -1,0 +1,2 @@
+UPDATE tracking_configs SET cf_retry_requested = true, is_active = true, updated_at = now() WHERE id = '58a4dfa7-6423-4d66-9c03-61b731d88654';
+UPDATE bot_settings SET value = 'true', updated_at = now() WHERE key = 'proxy_enabled';
